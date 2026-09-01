@@ -1,0 +1,577 @@
+package io.github.wiojelt.dotsuite.privileged
+
+import android.content.ComponentName
+import android.content.Context
+import android.content.ServiceConnection
+import android.content.pm.PackageManager
+import android.os.IBinder
+import android.os.RemoteException
+import io.github.wiojelt.dotsuite.IUserService
+import io.github.wiojelt.dotsuite.service.UserService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import rikka.shizuku.Shizuku
+
+internal fun parseAudioFocusMode(output: String): String? {
+    if (output.startsWith("ERROR")) return null
+    return Regex("TAKE_AUDIO_FOCUS:\\s*(default|allow|foreground|ignore|deny)")
+        .find(output)?.groupValues?.get(1) ?: "default"
+}
+
+/**
+ * Single entry point for everything privileged. Tracks [setup] as a flow the UI observes, gets a
+ * privileged process going, binds [UserService] inside it, and exposes suspend helpers that forward
+ * to it off the main thread.
+ *
+ * Shizuku or Sui spawns [UserService] with shell/root identity. The app never invokes `su`
+ * directly; native SystemUI integration remains the separate Xposed-module responsibility.
+ */
+object PrivilegedManager {
+
+    /**
+     * Everything the mixing page needs to know, as independent observations rather than one
+     * exclusive state. Each of [installed], [serviceRunning] and [accessGranted] is measured on its
+     * own and reported on its own, so a check that reads wrong shows up as the wrong tick on the
+     * checklist instead of quietly impersonating a different step.
+     */
+    data class Setup(
+        /** The Shizuku app is present on the device. */
+        val installed: Boolean = false,
+        /**
+         * A Shizuku service is running *and can still authorise apps* — the app's service, or Sui on
+         * rooted devices. Deliberately stricter than "a binder answers": a service left behind by an
+         * older install of the Shizuku app keeps answering long after the app that governed it is
+         * gone, and nothing sent to it can ever be approved. See [serverUnusable].
+         */
+        val serviceRunning: Boolean = false,
+        /** That service has authorised DotSuite. */
+        val accessGranted: Boolean = false,
+        /** Binding the privileged UserService right now. */
+        val connecting: Boolean = false,
+        /** Authorised, but the privileged UserService never came back. */
+        val connectFailed: Boolean = false,
+        /** The privileged UserService is bound and taking calls. */
+        val ready: Boolean = false,
+        /** Authorized bridge identity, not an inference from installed root-manager packages. */
+        val bridgeUid: Int? = null,
+        /**
+         * A Shizuku service is answering, but an authorisation request to it went unanswered, so it
+         * is orphaned: still alive from a previous install of the Shizuku app, which is exactly why
+         * the Shizuku app itself reports it as not running. Only the user can clear this, by
+         * stopping that leftover service and starting Shizuku again.
+         */
+        val serverUnusable: Boolean = false,
+    )
+
+    /** Package name of the Shizuku app, used to check install state and to launch it. */
+    const val PACKAGE_NAME = "moe.shizuku.privileged.api"
+
+    private const val PERMISSION_CODE = 4919
+
+    /**
+     * How long to wait for [Shizuku.bindUserService] to call back before treating the attempt as
+     * failed. Shizuku has to spawn a whole `app_process` VM, which is slow on weak devices, so this
+     * is generous — it only has to be shorter than the user's patience.
+     */
+    private const val BIND_TIMEOUT_MS = 15_000L
+
+    /**
+     * How long to wait for an authorisation request before concluding the service can't grant one.
+     * A healthy Shizuku hands the request to its app, which puts a dialog in front of the user; an
+     * orphaned one has no app left to hand it to and simply says nothing, and that silence is the
+     * only evidence a client ever gets. Long enough that a slow device — or a user who takes a
+     * moment to read the dialog before answering — is never mistaken for silence.
+     */
+    private const val PERMISSION_TIMEOUT_MS = 20_000L
+
+    private val _setup = MutableStateFlow(Setup())
+    val setup: StateFlow<Setup> = _setup.asStateFlow()
+
+    private var appContext: Context? = null
+    private var service: IUserService? = null
+    private var shortLivedClients = 0
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /** Set while a [Shizuku.bindUserService] call is outstanding, so refreshes don't stack binds. */
+    private var binding = false
+    private var timeoutJob: Job? = null
+
+    /** Latched when a bind attempt gives up, so the checklist can offer a retry instead of spinning. */
+    private var connectFailed = false
+
+    /** Whether this process has already cleared any user service left over by a previous one. */
+    private var clearedStaleService = false
+
+    /** Latched when an authorisation request goes unanswered. See [Setup.serverUnusable]. */
+    private var serverUnusable = false
+    private var permissionTimeoutJob: Job? = null
+
+    /**
+     * Shizuku's listeners are process-wide and hold nothing but this singleton, so they are
+     * registered once and kept for the life of the process. [init] can be called by more than one
+     * component, and in any order.
+     */
+    private var listenersRegistered = false
+
+    private val onBinderReceived = Shizuku.OnBinderReceivedListener { refresh(force = true) }
+    private val onBinderDead = Shizuku.OnBinderDeadListener { refresh(force = false) }
+    private val onPermissionResult = Shizuku.OnRequestPermissionResultListener { code, _ ->
+        if (code != PERMISSION_CODE) return@OnRequestPermissionResultListener
+        // An answer of any kind — allow or deny — proves the service still reaches its app, which is
+        // the whole question [serverUnusable] exists to settle.
+        cancelPermissionTimeout()
+        serverUnusable = false
+        refresh(force = true)
+    }
+
+    fun init(context: Context) {
+        if (appContext == null) appContext = context.applicationContext
+        if (!listenersRegistered) {
+            listenersRegistered = true
+            Shizuku.addBinderReceivedListenerSticky(onBinderReceived)
+            Shizuku.addBinderDeadListener(onBinderDead)
+            Shizuku.addRequestPermissionResultListener(onPermissionResult)
+        }
+        refresh()
+    }
+
+    /** Drop pending work and the non-daemon helper when the user closes the app. */
+    fun destroy() {
+        if (shortLivedClients > 0) return
+        cancelTimeout()
+        cancelPermissionTimeout()
+        binding = false
+        connectFailed = false
+        service = null
+        discardConnection()
+        publish()
+    }
+
+    /**
+     * Re-measure everything and connect if the way is clear. Cheap enough to call on a timer, which
+     * the mixing page does — the user leaves to install Shizuku, to start it, or to authorise us,
+     * and every one of those has to tick its own step without them having to come back and forth.
+     */
+    fun refresh() = refresh(force = false)
+
+    /** Tiles hold the bridge only for their explicit, bounded operation. Called on the main thread. */
+    fun retainClient(context: Context) { shortLivedClients++; init(context) }
+    fun releaseClient() {
+        shortLivedClients = (shortLivedClients - 1).coerceAtLeast(0)
+        if (shortLivedClients == 0) destroy()
+    }
+
+    /** Start over after a failed connection, discarding whatever Shizuku still has cached. */
+    fun retry() = refresh(force = true)
+
+    /**
+     * [force] means "the situation changed, try binding again even if we already gave up": Shizuku
+     * just handed us a binder, access was granted, or the user asked to retry. Without it a failed
+     * bind stays failed, so a plain refresh can't put the user back on an endless spinner.
+     */
+    private fun refresh(force: Boolean) {
+        if (shortLivedClients == 0 && service == null) { publish(); return }
+        if (!serverAnswering()) {
+            // Shizuku's service is gone, and so is anything it had spawned for us. A later service
+            // is a different service, so nothing we concluded about this one carries over.
+            cancelTimeout()
+            cancelPermissionTimeout()
+            binding = false
+            connectFailed = false
+            serverUnusable = false
+            service = null
+            publish()
+            return
+        }
+        if (!hasPermission()) {
+            connectFailed = false
+            publish()
+            return
+        }
+        // Being authorised is itself proof the service reaches its app, whatever an earlier request
+        // led us to believe.
+        serverUnusable = false
+        if (service == null && (force || !connectFailed)) bindService(force) else publish()
+    }
+
+    /** Push the current facts to the UI. The only place [setup] is ever written. */
+    private fun publish() {
+        val previous = _setup.value
+        val answering = serverAnswering()
+        val running = answering && !serverUnusable
+        val granted = running && hasPermission()
+        _setup.value = Setup(
+            installed = isInstalled(),
+            serviceRunning = running,
+            accessGranted = granted,
+            connecting = binding,
+            connectFailed = connectFailed,
+            ready = service != null,
+            bridgeUid = if (granted) runCatching { Shizuku.getUid().takeIf { it >= 0 } }.getOrNull() else null,
+            serverUnusable = answering && serverUnusable,
+        )
+        if (previous != _setup.value) io.github.wiojelt.dotsuite.diagnostics.RecentDiagnostics.record(
+            "bridge.state", "ready=${_setup.value.ready} granted=$granted connecting=$binding failed=$connectFailed")
+    }
+
+    /**
+     * Whether a Shizuku service is alive and has accepted us as a client.
+     *
+     * [Shizuku.pingBinder] is a real round trip to the service's process rather than a cached flag,
+     * so it settles liveness on its own. What it can't settle is whether the handshake that follows
+     * ever completed: a binder can arrive from a service too old to attach to, leaving every later
+     * call throwing, so the version check has to be asked separately. Neither of these can tell an
+     * orphaned service from a healthy one — both answer perfectly well — which is what
+     * [serverUnusable] is for.
+     */
+    private fun serverAnswering(): Boolean =
+        Shizuku.pingBinder() &&
+            runCatching { !Shizuku.isPreV11() && Shizuku.getVersion() >= 11 }.getOrDefault(false)
+
+    private fun isInstalled(): Boolean =
+        try {
+            appContext!!.packageManager.getPackageInfo(PACKAGE_NAME, 0)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
+        }
+
+    /**
+     * Kick off Shizuku's authorisation prompt. Returns false when there's nothing to prompt with —
+     * no service to ask, a pre-v11 server whose permission model we don't support, or an earlier
+     * "deny and don't ask again". Those can only be undone inside the Shizuku app, so the caller
+     * sends the user there instead.
+     */
+    fun requestPermission(): Boolean {
+        if (!serverAnswering()) {
+            refresh(force = false)
+            return false
+        }
+        if (hasPermission()) {
+            bindService(force = true)
+            return true
+        }
+        val canPrompt = runCatching {
+            !Shizuku.isPreV11() && !Shizuku.shouldShowRequestPermissionRationale()
+        }.getOrDefault(false)
+        if (canPrompt) {
+            // Doubles as the only test there is for whether this service can still authorise anyone.
+            // The request costs the user nothing extra — reaching here means they tapped "grant" and
+            // a dialog is what they're already waiting for — so if none ever arrives, the silence
+            // itself is the answer. See [Setup.serverUnusable].
+            cancelPermissionTimeout()
+            Shizuku.requestPermission(PERMISSION_CODE)
+            permissionTimeoutJob = scope.launch {
+                delay(PERMISSION_TIMEOUT_MS)
+                if (!hasPermission()) {
+                    serverUnusable = true
+                    publish()
+                }
+            }
+        }
+        return canPrompt
+    }
+
+    private fun cancelPermissionTimeout() {
+        permissionTimeoutJob?.cancel()
+        permissionTimeoutJob = null
+    }
+
+    /**
+     * Shizuku's permission check throws rather than returning false when it has no binder, and its
+     * pre-v11 flag reads as "modern" until a binder has been received, so this is only safe to ask
+     * behind a successful ping — and even then the binder can die in between.
+     */
+    private fun hasPermission(): Boolean =
+        runCatching {
+            !Shizuku.isPreV11() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+        }.getOrDefault(false)
+
+    private val serviceArgs: Shizuku.UserServiceArgs
+        get() = Shizuku.UserServiceArgs(
+            ComponentName(appContext!!.packageName, UserService::class.java.name)
+        ).daemon(false)
+            .processNameSuffix("bridge")
+            .debuggable(false)
+            // Bump whenever UserService's interface changes so Shizuku restarts a fresh service.
+            .version(io.github.wiojelt.dotsuite.BuildConfig.VERSION_CODE)
+
+    private var connection: ServiceConnection? = null
+    private var connectionGeneration = 0
+    private fun newConnection(generation: Int) = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            if (generation != connectionGeneration) return
+            cancelTimeout()
+            binding = false
+            if (binder != null && binder.pingBinder()) {
+                service = IUserService.Stub.asInterface(binder)
+                connectFailed = false
+                publish()
+            } else {
+                bindFailed()
+            }
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            if (generation != connectionGeneration) return
+            // The privileged process went away. Don't sit on READY with a dead binder — every call
+            // through it would silently do nothing.
+            bindFailed()
+        }
+    }
+
+    private fun discardConnection() {
+        val previous = connection
+        connection = null
+        connectionGeneration++
+        if (previous != null) removeRemoteService(previous)
+    }
+
+    private fun removeRemoteService(previous: ServiceConnection) {
+        // remove=true kills the remote process but leaves the SDK's shared connection cached
+        // until its asynchronous death callback. Detach that cache FIRST so a rapid rebind cannot
+        // attach the new callback to the dying connection (and lose every second connection).
+        runCatching { Shizuku.unbindUserService(serviceArgs, previous, false) }
+        runCatching { Shizuku.unbindUserService(serviceArgs, previous, true) }
+    }
+
+    /**
+     * Ask Shizuku for the privileged service.
+     *
+     * [force] additionally clears any user service record Shizuku is still holding for us before
+     * asking. That matters because a record whose process died without Shizuku noticing — a
+     * force-stopped app, a killed emulator, a spawn that failed — is never re-created on its own,
+     * and every later bind against it silently goes unanswered. Ours is not a daemon, so nothing of
+     * value can be on the other side of that record.
+     */
+    private fun bindService(force: Boolean) {
+        if (service != null || (binding && !force)) {
+            publish()
+            return
+        }
+        cancelTimeout()
+        binding = true
+        connectFailed = false
+        publish()
+        val previous = connection
+        val fresh = newConnection(++connectionGeneration)
+        connection = fresh
+        if (force || !clearedStaleService) {
+            clearedStaleService = true
+            removeRemoteService(previous ?: fresh)
+        }
+        try {
+            Shizuku.bindUserService(serviceArgs, fresh)
+        } catch (e: Throwable) {
+            bindFailed()
+            return
+        }
+        // Shizuku answers a bind it can't satisfy with silence, so the spinner needs its own way out.
+        timeoutJob = scope.launch {
+            delay(BIND_TIMEOUT_MS)
+            if (service == null) bindFailed()
+        }
+    }
+
+    /**
+     * A bind attempt is over without a usable service. Only count that as a failure if the way was
+     * actually clear — Shizuku may have been stopped or de-authorised while we were waiting, and
+     * the checklist should then point at that step rather than at a connection that never had a
+     * chance.
+     */
+    private fun bindFailed() {
+        cancelTimeout()
+        binding = false
+        service = null
+        discardConnection()
+        clearedStaleService = false
+        connectFailed = serverAnswering() && hasPermission()
+        publish()
+    }
+
+    private fun cancelTimeout() {
+        timeoutJob?.cancel()
+        timeoutJob = null
+    }
+
+    /** Write one validated TAKE_AUDIO_FOCUS mode. */
+    suspend fun setAudioFocusMode(packageName: String, mode: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val svc = service ?: return@withContext false
+            try {
+                val result = svc.setAudioFocusMode(packageName, mode)
+                !result.startsWith("ERROR")
+            } catch (e: RemoteException) {
+                false
+            }
+        }
+
+    /** Read the explicit override; no entry means Android's default policy. */
+    suspend fun getAudioFocusMode(packageName: String): String? = withContext(Dispatchers.IO) {
+        val svc = service ?: return@withContext null
+        try {
+            val output = svc.getAudioFocusMode(packageName)
+            parseAudioFocusMode(output)
+        } catch (e: RemoteException) {
+            null
+        }
+    }
+
+    suspend fun setAudioFocusIgnored(packageName: String, ignore: Boolean): Boolean =
+        setAudioFocusMode(packageName, if (ignore) "ignore" else "default")
+
+    suspend fun isAndroidAutoActive(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            service?.isAndroidAutoActive() == true
+        } catch (e: RemoteException) {
+            false
+        }
+    }
+
+    /** Persist one of the module's allow-listed Settings.Secure feature switches. */
+    suspend fun setFeatureEnabled(key: String, enabled: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            val svc = service ?: return@withContext false
+            try {
+                !svc.setFeatureEnabled(key, enabled).startsWith("ERROR")
+            } catch (e: RemoteException) {
+                false
+            }
+        }
+
+    /** Persist one validated module preference without exposing arbitrary secure-setting writes. */
+    suspend fun setSoundSetting(key: String, value: Int): Boolean =
+        withContext(Dispatchers.IO) {
+            val svc = service ?: return@withContext false
+            try {
+                !svc.setSoundSetting(key, value).startsWith("ERROR")
+            } catch (e: RemoteException) {
+                false
+            }
+        }
+
+    /** Read whether the app currently has audio focus disabled. */
+    suspend fun setSystemOption(key: String, value: String?): String = withContext(Dispatchers.IO) {
+        runCatching { service?.setSystemOption(key, value) ?: "ERROR: bridge disconnected" }
+            .onFailure { io.github.wiojelt.dotsuite.diagnostics.RecentDiagnostics.failure("bridge.write", it) }
+            .getOrDefault("ERROR: bridge failed")
+    }
+
+    suspend fun reloadSystemUi(): String = withContext(Dispatchers.IO) {
+        runCatching { service?.reloadSystemUi() ?: "Bridge disconnected" }.getOrDefault("Reload unavailable")
+    }
+
+    suspend fun launchMapsMinMode(): String = withContext(Dispatchers.IO) {
+        runCatching { service?.launchMapsMinMode() ?: "ERROR: bridge disconnected" }
+            .onFailure { io.github.wiojelt.dotsuite.diagnostics.RecentDiagnostics.failure("maps.launch", it) }
+            .getOrDefault("ERROR: bridge failed")
+    }
+
+    data class OptionRead(val available: Boolean, val value: String? = null, val error: String? = null)
+    suspend fun aodCapabilities(): org.json.JSONObject? = withContext(Dispatchers.IO) {
+        runCatching { org.json.JSONObject(service?.getAodCapabilities() ?: "") }.getOrNull()
+    }
+    suspend fun readSystemOption(key: String): OptionRead = withContext(Dispatchers.IO) {
+        runCatching {
+            val output = service?.readSystemOption(key) ?: return@withContext OptionRead(false, error = "bridge disconnected")
+            if (output.startsWith("ERROR")) return@withContext OptionRead(false, error = output)
+            val json = org.json.JSONObject(output)
+            OptionRead(true, if (json.getBoolean("present")) json.getString("value") else null)
+        }.getOrElse {
+            io.github.wiojelt.dotsuite.diagnostics.RecentDiagnostics.failure("bridge.read", it)
+            OptionRead(false, error = it.javaClass.simpleName)
+        }
+    }
+
+    /** Read whether the app currently has audio focus disabled. */
+    suspend fun isAudioFocusIgnored(packageName: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val svc = service ?: return@withContext false
+            try {
+                svc.getAudioFocusMode(packageName).contains("ignore")
+            } catch (e: RemoteException) {
+                false
+            }
+        }
+
+    /**
+     * Set the device ringer mode through the privileged service, which reaches AudioService's
+     * internal setter — the system volume panel's own path. Unlike the app's `AudioManager`, that
+     * one can select SILENT without the framework turning Do Not Disturb on. [mode] is "NORMAL",
+     * "VIBRATE" or "SILENT".
+     *
+     * Returning true means only that the command was *delivered*, not that it took effect: the
+     * `set-ringer-mode` sub-command is recent, and a platform that doesn't carry it exits 0 with no
+     * output rather than reporting anything, so there's nothing here to tell the two apart. Callers
+     * must confirm against the real ringer mode and fall back on their own.
+     */
+    suspend fun setRingerMode(mode: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val svc = service ?: return@withContext false
+            try {
+                svc.setRingerMode(mode)
+                true
+            } catch (e: RemoteException) {
+                false
+            }
+        }
+
+    /** One active audio player, as reported by the privileged service. */
+    data class PlayerSession(val piid: Int, val uid: Int, val packageName: String)
+
+    /** True once the privileged service is bound and ready to take per-app volume calls. */
+    val isReady: Boolean get() = service != null
+
+    /** Currently-playing audio players (one per stream), or empty if unavailable. */
+    suspend fun getActivePlayers(): List<PlayerSession> =
+        withContext(Dispatchers.IO) {
+            val svc = service ?: return@withContext emptyList()
+            try {
+                svc.activePlayers.mapNotNull { entry ->
+                    val parts = entry.split('|')
+                    if (parts.size != 3) return@mapNotNull null
+                    val piid = parts[0].toIntOrNull() ?: return@mapNotNull null
+                    val uid = parts[1].toIntOrNull() ?: return@mapNotNull null
+                    PlayerSession(piid, uid, parts[2])
+                }
+            } catch (e: RemoteException) {
+                emptyList()
+            }
+        }
+
+    /** Set a single player's linear volume (0.0..1.0). Returns true on success. */
+    suspend fun setPlayerVolume(piid: Int, volume: Float): Boolean =
+        withContext(Dispatchers.IO) {
+            val svc = service ?: return@withContext false
+            try {
+                svc.setPlayerVolume(piid, volume)
+            } catch (e: RemoteException) {
+                false
+            }
+        }
+
+    /**
+     * Whether any process for [packageName] is currently alive — used to tell a still-open app
+     * (screen off, backgrounded, paused) from one the user closed or force-stopped. Defaults to
+     * true when the privileged service is unavailable or errors, so a live per-app volume session
+     * is never discarded just because the link is momentarily down.
+     */
+    suspend fun isPackageRunning(packageName: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val svc = service ?: return@withContext true
+            try {
+                svc.isPackageRunning(packageName)
+            } catch (e: RemoteException) {
+                true
+            }
+        }
+}

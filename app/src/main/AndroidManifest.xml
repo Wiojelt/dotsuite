@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+    <!-- Normal Android user-consent dialog; not a privileged grant. -->
+    <uses-permission android:name="android.permission.BIND_APPWIDGET" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="com.nothing.ketchum.permission.ENABLE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- Needed to enumerate every installed app (not just launchable ones) so any app that
+         plays audio can be given the mixing toggle. This makes the build off-Play only. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+    <application
+        android:name=".DotSuiteApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.DotSuite">
+
+        <!-- Android 16+ GDK: issued API key no longer required; metadata retained per SDK docs. -->
+        <meta-data android:name="NothingKey" android:value="android16" />
+        <meta-data android:name="xposedmodule" android:value="true" />
+        <meta-data android:name="xposeddescription"
+            android:value="DotSuite: native sound controls, gestures and optional interface tools for Nothing OS." />
+        <meta-data android:name="xposedminversion" android:value="82" />
+        <activity
+            android:name=".MainActivity"
+            android:launchMode="singleTop"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.DotSuite"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Native SystemUI (STATUS_BAR) or our own UID only. No third-party capture intents. -->
+        <activity android:name=".capture.CaptureShortcutActivity"
+            android:exported="true" android:permission="android.permission.STATUS_BAR"
+            android:excludeFromRecents="true" android:theme="@style/Theme.CaptureShortcut" />
+        <service android:name=".capture.CaptureService" android:exported="false"
+            android:foregroundServiceType="camera|microphone" />
+        <service android:name=".tiles.MonoAudioTile" android:exported="true" android:label="Mono audio"
+            android:icon="@drawable/ic_qs_mono" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service android:name=".tiles.ExtraDimTile" android:exported="true" android:label="Extra dim"
+            android:icon="@drawable/ic_qs_dim" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service android:name=".tiles.CameraCaptureTile" android:exported="true" android:label="Camera shortcut"
+            android:icon="@drawable/ic_qs_camera" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service android:name=".tiles.MapsMinModeTile" android:exported="true" android:label="Maps MinMode"
+            android:icon="@drawable/ic_qs_maps" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+
+        <service android:name=".maps.MapsNavigationService" android:exported="true"
+            android:label="DotSuite · Maps navigation" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
+        </service>
+        <service android:name=".standby.StandbyDreamService" android:exported="true"
+            android:label="DotSuite StandBy" android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter><action android:name="android.service.dreams.DreamService" /></intent-filter>
+            <meta-data android:name="android.service.dream" android:resource="@xml/standby_dream" />
+        </service>
+        <activity android:name=".standby.StandbyPreviewActivity" android:exported="false" />
+        <activity android:name=".standby.WidgetPickerActivity" android:exported="false" />
+        <receiver android:name=".audio.ExternalAudioSafetyReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.app.action.ENTER_CAR_MODE" />
+                <action android:name="androidx.car.app.connection.action.CAR_CONNECTION_UPDATED" />
+                <action android:name="android.hardware.usb.action.USB_STATE" />
+            </intent-filter>
+        </receiver>
+        <activity android:name=".dock.QuickDockActivity" android:exported="true"
+            android:permission="android.permission.STATUS_BAR" android:excludeFromRecents="true"
+            android:theme="@style/Theme.DotSuite.Dock" />
+        <service android:name=".tiles.QuickDockTile" android:exported="true" android:label="Quick dock"
+            android:icon="@drawable/ic_qs_dock" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service android:name=".tiles.AodTile" android:exported="true" android:label="Native AOD"
+            android:icon="@drawable/ic_qs_aod" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.reports"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/report_paths" />
+        </provider>
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"
+            tools:ignore="ExportedContentProvider" />
+
+    </application>
+
+</manifest>

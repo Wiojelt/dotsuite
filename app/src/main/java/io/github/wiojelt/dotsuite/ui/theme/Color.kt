@@ -1,0 +1,93 @@
+package io.github.wiojelt.dotsuite.ui.theme
+
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+
+// Material 3 has an error colour but no success colour, and on Android 12+ the scheme is the
+// device's dynamic palette, so there's nothing to derive a green from. These are the green tonal
+// palette's 40 and 80 tones — the same tones M3 uses for `error` — so a tick reads as deliberate
+// next to the red beside it whatever the wallpaper is doing.
+private val SuccessOnLight = Color(0xFF3B6939)
+private val SuccessOnDark = Color(0xFFF2F0E9)
+
+/**
+ * Green for a satisfied checklist step, picked off the resolved surface rather than the system
+ * setting so it follows the in-app Light/Dark/System choice and dynamic colour alike.
+ */
+val successColor: Color
+    @Composable get() =
+        if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) SuccessOnDark else SuccessOnLight
+
+// Fallback palette for devices without dynamic color (pre-Android 12), generated from seed
+// #475D91 — a muted signal-indigo that sits close to what Material You produces on blue
+// wallpapers, so the fallback doesn't read as a different app.
+
+// Light
+val PrimaryLight = Color(0xFF475D91)
+val OnPrimaryLight = Color(0xFFFFFFFF)
+val PrimaryContainerLight = Color(0xFFD9E2FF)
+val OnPrimaryContainerLight = Color(0xFF001945)
+val SecondaryLight = Color(0xFF575E71)
+val OnSecondaryLight = Color(0xFFFFFFFF)
+val SecondaryContainerLight = Color(0xFFDBE2F9)
+val OnSecondaryContainerLight = Color(0xFF141B2C)
+val TertiaryLight = Color(0xFF715573)
+val OnTertiaryLight = Color(0xFFFFFFFF)
+val TertiaryContainerLight = Color(0xFFFBD7FB)
+val OnTertiaryContainerLight = Color(0xFF29132D)
+val ErrorLight = Color(0xFFBA1A1A)
+val OnErrorLight = Color(0xFFFFFFFF)
+val ErrorContainerLight = Color(0xFFFFDAD6)
+val OnErrorContainerLight = Color(0xFF410002)
+val BackgroundLight = Color(0xFFFAF9FF)
+val OnBackgroundLight = Color(0xFF1A1B20)
+val SurfaceLight = Color(0xFFFAF9FF)
+val OnSurfaceLight = Color(0xFF1A1B20)
+val SurfaceVariantLight = Color(0xFFE1E2EC)
+val OnSurfaceVariantLight = Color(0xFF44464F)
+val OutlineLight = Color(0xFF757780)
+val OutlineVariantLight = Color(0xFFC5C6D0)
+val SurfaceContainerLowestLight = Color(0xFFFFFFFF)
+val SurfaceContainerLowLight = Color(0xFFF4F3FA)
+val SurfaceContainerLight = Color(0xFFEEEDF4)
+val SurfaceContainerHighLight = Color(0xFFE8E7EF)
+val SurfaceContainerHighestLight = Color(0xFFE2E2E9)
+val InversePrimaryLight = Color(0xFFB0C6FF)
+val InverseSurfaceLight = Color(0xFF2F3036)
+val InverseOnSurfaceLight = Color(0xFFF1F0F7)
+
+// Dark
+val PrimaryDark = Color(0xFFF1323B)
+val OnPrimaryDark = Color(0xFFFFFFFF)
+val PrimaryContainerDark = Color(0xFF2A1416)
+val OnPrimaryContainerDark = Color(0xFFFFDAD9)
+val SecondaryDark = Color(0xFFF2F0E9)
+val OnSecondaryDark = Color(0xFF101010)
+val SecondaryContainerDark = Color(0xFF202020)
+val OnSecondaryContainerDark = Color(0xFFF2F0E9)
+val TertiaryDark = Color(0xFFD7D4CC)
+val OnTertiaryDark = Color(0xFF101010)
+val TertiaryContainerDark = Color(0xFF292929)
+val OnTertiaryContainerDark = Color(0xFFF2F0E9)
+val ErrorDark = Color(0xFFFF5449)
+val OnErrorDark = Color(0xFFFFFFFF)
+val ErrorContainerDark = Color(0xFF3B090B)
+val OnErrorContainerDark = Color(0xFFFFDAD9)
+val BackgroundDark = Color(0xFF080808)
+val OnBackgroundDark = Color(0xFFF2F0E9)
+val SurfaceDark = Color(0xFF0C0C0C)
+val OnSurfaceDark = Color(0xFFF2F0E9)
+val SurfaceVariantDark = Color(0xFF1A1A1A)
+val OnSurfaceVariantDark = Color(0xFFA5A39E)
+val OutlineDark = Color(0xFF5F5E5A)
+val OutlineVariantDark = Color(0xFF272727)
+val SurfaceContainerLowestDark = Color(0xFF050505)
+val SurfaceContainerLowDark = Color(0xFF121212)
+val SurfaceContainerDark = Color(0xFF161616)
+val SurfaceContainerHighDark = Color(0xFF1B1B1B)
+val SurfaceContainerHighestDark = Color(0xFF222222)
+val InversePrimaryDark = Color(0xFFD71920)
+val InverseSurfaceDark = Color(0xFFF2F0E9)
+val InverseOnSurfaceDark = Color(0xFF101010)

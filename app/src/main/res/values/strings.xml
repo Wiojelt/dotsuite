@@ -1,0 +1,4 @@
+<!-- Android launcher label. In-app strings are in i18n/Strings.kt. -->
+<resources>
+    <string name="app_name" translatable="false">DotSuite</string>
+</resources>

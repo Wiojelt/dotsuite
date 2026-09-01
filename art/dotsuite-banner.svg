@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="820" viewBox="0 0 1800 820" role="img" aria-labelledby="title desc">
+  <title id="title">DotSuite</title>
+  <desc id="desc">DotSuite feature overview</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101216"/>
+      <stop offset="0.62" stop-color="#0b0c0f"/>
+      <stop offset="1" stop-color="#130c0d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="1" r="1">
+      <stop offset="0" stop-color="#e64646" stop-opacity=".18"/>
+      <stop offset="1" stop-color="#e64646" stop-opacity="0"/>
+    </radialGradient>
+    <style>
+      .brand { font: 700 76px Inter, Arial, sans-serif; fill: #f4f2ed; letter-spacing: -2px; }
+      .eyebrow { font: 600 18px Inter, Arial, sans-serif; fill: #e45454; letter-spacing: 4px; }
+      .item { font: 560 29px Inter, Arial, sans-serif; fill: #f4f2ed; }
+      .sub { font: 400 20px Inter, Arial, sans-serif; fill: #9fa2a9; }
+      .num { font: 600 16px Inter, Arial, sans-serif; fill: #e45454; letter-spacing: 1px; }
+    </style>
+  </defs>
+  <rect width="1800" height="820" rx="36" fill="url(#bg)"/>
+  <rect width="1800" height="820" rx="36" fill="url(#glow)"/>
+  <path d="M594 76v668" stroke="#303238" stroke-width="1"/>
+
+  <g transform="translate(86 92)">
+    <circle cx="20" cy="20" r="13" fill="#f4f2ed"/>
+    <circle cx="58" cy="20" r="13" fill="#f4f2ed"/>
+    <circle cx="20" cy="58" r="13" fill="#f4f2ed"/>
+    <circle cx="58" cy="58" r="13" fill="#e64646"/>
+    <text class="brand" x="0" y="190">DotSuite</text>
+    <g transform="translate(2 352)" fill="none" stroke="#575a61" stroke-width="2">
+      <circle cx="62" cy="62" r="62"/>
+      <circle cx="62" cy="62" r="34" stroke="#e64646"/>
+      <circle cx="62" cy="62" r="7" fill="#f4f2ed" stroke="none"/>
+      <circle cx="38" cy="43" r="5" fill="#f4f2ed" stroke="none"/>
+      <circle cx="86" cy="43" r="5" fill="#f4f2ed" stroke="none"/>
+      <circle cx="38" cy="81" r="5" fill="#f4f2ed" stroke="none"/>
+      <circle cx="86" cy="81" r="5" fill="#e64646" stroke="none"/>
+    </g>
+  </g>
+
+  <g transform="translate(674 94)">
+    <text class="eyebrow" x="0" y="20">FEATURES</text>
+
+    <g transform="translate(0 78)"><text class="num" x="0" y="18">01</text><text class="item" x="58" y="18">Sound</text><text class="sub" x="58" y="52">Native panel · app volume · audio mixing · media keys</text></g>
+    <g transform="translate(0 190)"><text class="num" x="0" y="18">02</text><text class="item" x="58" y="18">Gestures</text><text class="sub" x="58" y="52">Notch actions · Quick Dock · power shortcuts</text></g>
+    <g transform="translate(0 302)"><text class="num" x="0" y="18">03</text><text class="item" x="58" y="18">Display</text><text class="sub" x="58" y="52">Lock screen · motion · back indicator · AOD</text></g>
+    <g transform="translate(0 414)"><text class="num" x="0" y="18">04</text><text class="item" x="58" y="18">StandBy</text><text class="sub" x="58" y="52">Desk clocks · installed widgets</text></g>
+    <g transform="translate(0 526)"><text class="num" x="0" y="18">05</text><text class="item" x="58" y="18">Camera</text><text class="sub" x="58" y="52">Capture shortcuts · Glyph countdown</text></g>
+
+    <g transform="translate(570 78)"><text class="num" x="0" y="18">06</text><text class="item" x="58" y="18">Tools</text><text class="sub" x="58" y="52">Maps mode · share sheet · quick tiles</text></g>
+    <g transform="translate(570 190)"><text class="num" x="0" y="18">07</text><text class="item" x="58" y="18">Personalization</text><text class="sub" x="58" y="52">Translucent surfaces · dots · motion controls</text></g>
+    <g transform="translate(570 302)"><text class="num" x="0" y="18">08</text><text class="item" x="58" y="18">Recovery</text><text class="sub" x="58" y="52">Saved originals · local diagnostics · restore</text></g>
+
+    <g transform="translate(570 474)">
+      <rect width="436" height="96" rx="48" fill="#f2ce77"/>
+      <circle cx="48" cy="48" r="22" fill="#2a2110"/>
+      <circle cx="42" cy="43" r="4" fill="#f2ce77"/>
+      <circle cx="54" cy="43" r="4" fill="#f2ce77"/>
+      <path d="M34 51h28c0 11-6 18-14 18s-14-7-14-18z" fill="#f2ce77"/>
+      <text x="86" y="57" style="font:600 24px Inter,Arial,sans-serif;fill:#211b10">Support development ↗</text>
+    </g>
+  </g>
+</svg>
