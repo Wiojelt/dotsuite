@@ -15,6 +15,38 @@ public final class PersonalizationPolicy {
     public static final String NOTCH_RIGHT = PREFIX + "notch_right";
     public static final String NOTCH_HAPTICS = PREFIX + "notch_haptics";
     public static final String STATUS_DOUBLE_SLEEP = PREFIX + "status_double_sleep";
+    public static final String TRANSLUCENT_QS = PREFIX + "translucent_qs";
+    public static final String QS_TRANSPARENCY = PREFIX + "qs_transparency";
+    public static final String QS_TILE_STYLE = PREFIX + "qs_tile_style";
+    public static final String QS_ANIMATION_STYLE = PREFIX + "qs_anim_style";
+    public static final String LAUNCHER_GRID_ROWS = PREFIX + "launcher_grid_rows";
+    public static final String LAUNCHER_GRID_COLS = PREFIX + "launcher_grid_cols";
+    public static final String LAUNCHER_ICON_SCALE = PREFIX + "launcher_icon_scale";
+    public static final String LAUNCHER_GLASS_ICONS = PREFIX + "launcher_glass_icons";
+    public static final String LAUNCHER_ICON_ALPHA = PREFIX + "launcher_icon_alpha";
+    public static final String LAUNCHER_CUSTOM_ICONS = PREFIX + "launcher_custom_icons";
+    public static final String DUO_STATUSBAR = PREFIX + "duo_statusbar";
+    public static final String DUO_BATTERY_PERCENT = PREFIX + "duo_battery_percent";
+    public static final String NETWORK_TRAFFIC = PREFIX + "network_traffic";
+    public static final String SCREEN_OFF_ANIM = PREFIX + "screen_off_anim";
+    public static final String SCRAMBLE_PIN = PREFIX + "scramble_pin";
+    public static final String HIDE_PIN_INPUT = PREFIX + "hide_pin_input";
+    public static final String LOCKSCREEN_CHARGING_INFO = PREFIX + "lockscreen_charging_info";
+    public static final String BATTERY_CAP_ENABLED = PREFIX + "battery_cap_enabled";
+    public static final String BATTERY_CAP_LEVEL = PREFIX + "battery_cap_level";
+    public static final String ADVANCED_POWER_MENU = PREFIX + "advanced_power_menu";
+    public static final String STATUS_BAR_BRIGHTNESS = PREFIX + "status_bar_brightness";
+    public static final String STATUS_PADDING_START = PREFIX + "status_padding_start";
+    public static final String STATUS_PADDING_END = PREFIX + "status_padding_end";
+    public static final String BACK_GESTURE_KILL = PREFIX + "back_gesture_kill";
+    public static final String BYPASS_FLAG_SECURE = PREFIX + "bypass_flag_secure";
+    public static final String VOLUME_PANEL_TIMEOUT = PREFIX + "volume_panel_timeout";
+    public static final String DISABLE_SAFE_VOLUME = PREFIX + "disable_safe_volume";
+    public static final String EARPHONE_ICON = PREFIX + "earphone_icon";
+    public static final String BACK_GESTURE_TIMEOUT = PREFIX + "back_gesture_timeout";
+    public static final String TORCH_LEVEL = PREFIX + "torch_level";
+    public static final String CAFFEINATE_TIMEOUT = PREFIX + "caffeinate_timeout";
+    public static final String LAUNCHER_ICON_SHAPE = PREFIX + "launcher_icon_shape";
     public static final String CARRIER_LABEL = PREFIX + "carrier_label";
     public static final String WINDOW_SCALE = "window_animation_scale";
     public static final String TRANSITION_SCALE = "transition_animation_scale";
@@ -46,19 +78,38 @@ public final class PersonalizationPolicy {
 
     public static boolean acceptsInt(String key, int value) {
         if (POWER_TORCH.equals(key) || HIDE_DIRECT_SHARE.equals(key) || NOTCH_ENABLED.equals(key) || NOTCH_HAPTICS.equals(key)
-                || STATUS_DOUBLE_SLEEP.equals(key)) return value == 0 || value == 1;
+                || STATUS_DOUBLE_SLEEP.equals(key) || TRANSLUCENT_QS.equals(key)
+                || BATTERY_CAP_ENABLED.equals(key) || ADVANCED_POWER_MENU.equals(key)
+                || LAUNCHER_GLASS_ICONS.equals(key) || DUO_STATUSBAR.equals(key)
+                || DUO_BATTERY_PERCENT.equals(key) || NETWORK_TRAFFIC.equals(key)
+                || SCRAMBLE_PIN.equals(key) || HIDE_PIN_INPUT.equals(key)
+                || LOCKSCREEN_CHARGING_INFO.equals(key)
+                || STATUS_BAR_BRIGHTNESS.equals(key) || BACK_GESTURE_KILL.equals(key)
+                || BYPASS_FLAG_SECURE.equals(key) || DISABLE_SAFE_VOLUME.equals(key)
+                || EARPHONE_ICON.equals(key) || HIDE_NAV_PILL.equals(key)) return value == 0 || value == 1;
+        if (STATUS_PADDING_START.equals(key) || STATUS_PADDING_END.equals(key)) return value >= 0 && value <= 48;
+        if (VOLUME_PANEL_TIMEOUT.equals(key)) return value >= 500 && value <= 10000;
+        if (BACK_GESTURE_TIMEOUT.equals(key)) return value >= 200 && value <= 1000;
+        if (TORCH_LEVEL.equals(key)) return value >= 1 && value <= 10;
+        if (CAFFEINATE_TIMEOUT.equals(key)) return value >= -1 && value <= 60;
+        if (LAUNCHER_ICON_SHAPE.equals(key)) return value >= 0 && value <= 3;
+        if (BATTERY_CAP_LEVEL.equals(key) || QS_TRANSPARENCY.equals(key) || LAUNCHER_ICON_ALPHA.equals(key)) return value >= 0 && value <= 100;
+        if (QS_TILE_STYLE.equals(key) || QS_ANIMATION_STYLE.equals(key) || SCREEN_OFF_ANIM.equals(key)) return value >= 0 && value <= 4;
+        if (LAUNCHER_GRID_ROWS.equals(key) || LAUNCHER_GRID_COLS.equals(key)) return value >= 3 && value <= 9;
+        if (LAUNCHER_ICON_SCALE.equals(key)) return value >= 50 && value <= 150;
         if (NOTCH_TAP.equals(key) || NOTCH_DOUBLE.equals(key) || NOTCH_HOLD.equals(key)
                 || NOTCH_LEFT.equals(key) || NOTCH_RIGHT.equals(key)) return isAction(value);
         return false;
     }
 
     public static String namespace(String key) {
-        if (acceptsInt(key, 0)) return "secure";
+        if (acceptsInt(key, 0) || acceptsInt(key, 1000) || acceptsInt(key, 1) || BATTERY_CAP_LEVEL.equals(key) || VOLUME_PANEL_TIMEOUT.equals(key)) return "secure";
         if (BackArrowPolicy.owns(key)) return "secure";
         if (AodPolicy.owns(key)) return "secure";
         if (CARRIER_LABEL.equals(key) || EXTRA_DIM.equals(key) || EXTRA_DIM_LEVEL.equals(key)
                 || CHARGING_SOUNDS.equals(key) || CHARGING_VIBRATION.equals(key)
-                || CLOCK_SECONDS.equals(key) || CLOCK_DAY.equals(key) || HIDE_NAV_PILL.equals(key)) return "secure";
+                || CLOCK_SECONDS.equals(key) || CLOCK_DAY.equals(key) || HIDE_NAV_PILL.equals(key)
+                || LAUNCHER_CUSTOM_ICONS.equals(key)) return "secure";
         if (MASTER_MONO.equals(key) || MASTER_BALANCE.equals(key) || TOUCH_SOUNDS.equals(key)
                 || LOCK_SOUNDS.equals(key) || DIAL_SOUNDS.equals(key)
                 || AUTO_ROTATE.equals(key) || USER_ROTATION.equals(key)) return "system";
@@ -72,8 +123,8 @@ public final class PersonalizationPolicy {
         if (AodPolicy.owns(key)) return AodPolicy.accepts(key, value);
         if (namespace(key) == null) return false;
         if (value == null) return true; // restore a missing row by deleting exactly this key
-        if (acceptsInt(key, 0)) {
-            try { return value.matches("[0-9]{1,2}") && acceptsInt(key, Integer.parseInt(value)); }
+        if (acceptsInt(key, 0) || acceptsInt(key, 1000) || VOLUME_PANEL_TIMEOUT.equals(key)) {
+            try { return acceptsInt(key, Integer.parseInt(value)); }
             catch (NumberFormatException ignored) { return false; }
         }
         if (MASTER_MONO.equals(key) || EXTRA_DIM.equals(key) || TOUCH_SOUNDS.equals(key)

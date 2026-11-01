@@ -158,17 +158,36 @@ internal fun CategoryDot(area: FeatureArea, modifier: Modifier, enabled: Boolean
 
 @Composable
 private fun CategoryListRow(area: FeatureArea, enabled: Boolean = true, grouped: Boolean = false, onClick: () -> Unit) {
-    Surface(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(if (grouped) 0.dp else 16.dp),
+    val sound = io.github.wiojelt.dotsuite.ui.theme.LocalTouchSound.current
+    val interactions = remember { MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val motion = io.github.wiojelt.dotsuite.ui.theme.LocalMotionAllowed.current
+    val scale by animateFloatAsState(
+        targetValue = if (pressed && enabled) 0.98f else 1f,
+        animationSpec = if (motion) androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy) else androidx.compose.animation.core.tween(0),
+        label = "catListMorph"
+    )
+
+    Surface(
+        onClick = { sound(io.github.wiojelt.dotsuite.ui.theme.TouchCue.TAP); onClick() },
+        enabled = enabled,
+        shape = RoundedCornerShape(if (grouped) 0.dp else 20.dp),
         color = if (grouped) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = Modifier.fillMaxWidth().testTag("category-${area.name}")) {
+        border = if (grouped) null else androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        interactionSource = interactions,
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .testTag("category-${area.name}")
+    ) {
         Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-            DotGlyph(area, Modifier.size(30.dp))
+            DotGlyph(area, Modifier.size(32.dp))
             Column(Modifier.weight(1f).padding(start = 16.dp)) {
-                Text(area.title, style = MaterialTheme.typography.titleMedium)
+                Text(area.title, style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
                 Text(area.description, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text("›", style = MaterialTheme.typography.titleLarge)
+            Text("→", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
         }
     }
 }

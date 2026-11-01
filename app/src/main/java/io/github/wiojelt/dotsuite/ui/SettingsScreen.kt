@@ -12,6 +12,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -98,11 +100,25 @@ fun SettingsScreen(
         targetState = page,
         transitionSpec = {
             val direction = if (targetState == "home") -1 else 1
-            (fadeIn(tween(if (motionAllowed) 200 else 0)) + slideInHorizontally(tween(if (motionAllowed) 240 else 0)) { it / 10 * direction })
-                .togetherWith(
-                    fadeOut(tween(if (motionAllowed) 140 else 0)) +
-                        slideOutHorizontally(tween(if (motionAllowed) 210 else 0)) { -it / 14 * direction },
-                )
+            if (motionAllowed) {
+                (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)) +
+                 androidx.compose.animation.scaleIn(
+                     initialScale = if (direction > 0) 0.93f else 1.04f,
+                     animationSpec = androidx.compose.animation.core.spring(
+                         dampingRatio = androidx.compose.animation.core.Spring.DampingRatioLowBouncy,
+                         stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+                     )
+                 )).togetherWith(
+                     androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(180)) +
+                     androidx.compose.animation.scaleOut(
+                         targetScale = if (direction > 0) 1.04f else 0.93f,
+                         animationSpec = androidx.compose.animation.core.tween(180)
+                     )
+                 )
+            } else {
+                androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(0))
+                    .togetherWith(androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(0)))
+            }
         },
         label = "settingsPage",
     ) { destination ->
@@ -313,7 +329,23 @@ private fun ShizukuAccessRow(
 internal fun ActionRow(title: String, detail: String, access: FeatureAccess? = null, onClick: () -> Unit) {
     val sound = io.github.wiojelt.dotsuite.ui.theme.LocalTouchSound.current
     val area = remember(title) { FeatureCatalog.entries.firstOrNull { it.title == title }?.area }
-    Surface(onClick = { sound(io.github.wiojelt.dotsuite.ui.theme.TouchCue.TAP); onClick() }, color = Color.Transparent, modifier = Modifier.fillMaxWidth()) {
+    val interactions = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by interactions.collectIsPressedAsState()
+    val motion = io.github.wiojelt.dotsuite.ui.theme.LocalMotionAllowed.current
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (pressed) 0.982f else 1f,
+        animationSpec = if (motion) androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy) else androidx.compose.animation.core.tween(0),
+        label = "actionRowMorph"
+    )
+
+    Surface(
+        onClick = { sound(io.github.wiojelt.dotsuite.ui.theme.TouchCue.TAP); onClick() },
+        color = Color.Transparent,
+        interactionSource = interactions,
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+    ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
@@ -322,13 +354,13 @@ internal fun ActionRow(title: String, detail: String, access: FeatureAccess? = n
                 DotGlyph(area, Modifier.size(26.dp))
             }
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall)
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 2.dp))
                 if (access != null) Box(Modifier.padding(top = 7.dp)) { FeatureAccessBadge(access) }
             }
-            Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.headlineSmall)
+            Text("→", color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
     }
 }

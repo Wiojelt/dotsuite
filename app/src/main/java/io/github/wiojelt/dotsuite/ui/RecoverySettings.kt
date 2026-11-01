@@ -54,8 +54,14 @@ internal fun RecoverySettings() {
             busy = true
             scope.launch {
                 // Do not short-circuit: attempt every independent setting even if a previous write failed.
-                val results = listOf(P.NOTCH_ENABLED, P.STATUS_DOUBLE_SLEEP, P.POWER_TORCH, P.HIDE_DIRECT_SHARE)
-                    .map { SoundSettings.write(it, 0) }
+                val results = listOf(
+                    P.NOTCH_ENABLED, P.STATUS_DOUBLE_SLEEP, P.POWER_TORCH, P.HIDE_DIRECT_SHARE,
+                    P.TRANSLUCENT_QS, P.BATTERY_CAP_ENABLED, P.ADVANCED_POWER_MENU,
+                    P.LAUNCHER_GLASS_ICONS, P.DUO_STATUSBAR, P.NETWORK_TRAFFIC,
+                    P.SCRAMBLE_PIN, P.HIDE_PIN_INPUT, P.SCREEN_OFF_ANIM,
+                    P.STATUS_BAR_BRIGHTNESS, P.BACK_GESTURE_KILL, P.BYPASS_FLAG_SECURE,
+                    P.DISABLE_SAFE_VOLUME, P.EARPHONE_ICON, P.HIDE_NAV_PILL
+                ).map { SoundSettings.write(it, 0) }
                 val allDisabled = results.all { it }
                 status = if (allDisabled) "New gestures and share filtering disabled; assignments kept" else "Some changes could not be disabled; check Shizuku / Sui"
                 withContext(Dispatchers.IO) { FeatureJournal.record(context, "recovery.gestures", if (allDisabled) "disabled" else "incomplete") }

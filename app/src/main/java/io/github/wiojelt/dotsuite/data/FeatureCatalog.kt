@@ -16,7 +16,7 @@ enum class FeatureArea(val title: String, val description: String) {
 
 data class FeatureEntry(val page: String, val title: String, val detail: String, val section: String, val terms: String = "") {
     val access: FeatureAccess get() = when (page) {
-        "panel", "keys", "lockscreen", "notch", "carrier", "power", "share", "clock-style", "navigation", "back-arrow" -> FeatureAccess.ROOT_MODULE
+        "panel", "keys", "lockscreen", "notch", "carrier", "power", "share", "clock-style", "navigation", "back-arrow", "launcher", "duosb", "screen-anim", "navstar", "soundassist", "security" -> FeatureAccess.ROOT_MODULE
         "apps", "hearing", "feedback", "motion", "display", "maps", "recovery", "clock", "rotation", "aod" -> FeatureAccess.BRIDGE
         "capture", "standby" -> FeatureAccess.PERMISSION
         "tiles" -> FeatureAccess.PER_TOOL
@@ -73,7 +73,13 @@ object FeatureCatalog {
         FeatureEntry("dock", "Quick dock", "App shortcuts · no edge gesture takeover", "Gestures", "yan cekmece sidedock"),
         FeatureEntry("power", "Power button", "Screen-off flashlight · native shortcuts first", "Gestures", "guc fener"),
         FeatureEntry("share", "Share sheet", "Hide suggested contacts · keep app targets", "Tools", "paylas cleanshare"),
-        FeatureEntry("tiles", "Quick settings", "Add useful system tiles", "Tools", "hizli ayarlar qs"),
+        FeatureEntry("tiles", "Quick settings (QuickStar)", "Translucent frosted glass · opacity slider · tile theme", "Tools", "hizli ayarlar qs quickstar transparan"),
+        FeatureEntry("launcher", "Home screen & Icons (Home Up)", "Grid density · icon scale · glass icons · icon packs", "Display", "homeup launcher grid izgara ikon icon glass seffaf"),
+        FeatureEntry("duosb", "Duo Status Bar (DuoSB)", "Duo pill capsule · battery · traffic monitor · sleep gesture", "Display", "duosb statusbar durum cubugu pil kapsul"),
+        FeatureEntry("screen-anim", "Screen transitions (LockStar)", "CRT turn-off · charging wattage · PIN privacy", "Display", "crt ekran gecis animasyon kilit sarj lockstar"),
+        FeatureEntry("navstar", "Navigation & Gestures (NavStar)", "Hide pill line · full immersion · back gesture kill", "Gestures", "navstar gezinme bar hap cubuk cizgi geri oldur"),
+        FeatureEntry("soundassist", "Volume & Audio (SoundAssistant)", "Volume dialog timeout · bypass safe volume warning", "Sound", "soundassistant ses panel timeout guvenli ses uyari"),
+        FeatureEntry("security", "System & Privacy (FlagSecure)", "Bypass FLAG_SECURE · screenshot anywhere · app security", "Tools", "flagsecure ekran goruntusu banka screenshot kayit"),
         FeatureEntry("recovery", "Restore changes", "Restore saved settings · preserve external changes", "Maintenance", "geri al reset varsayilan"),
         FeatureEntry("diagnostics", "Local diagnostics", "Recent changes · nothing uploaded", "Maintenance", "log hata kayit"),
         FeatureEntry("bug-report", "Report a bug", "Review the last minute · email a report", "Maintenance", "hata rapor email log bug report"),

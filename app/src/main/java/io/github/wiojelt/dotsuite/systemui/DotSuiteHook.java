@@ -99,16 +99,25 @@ public final class DotSuiteHook implements IXposedHookLoadPackage {
         boolean isSystemServer = SYSTEM_SERVER.equals(param.packageName)
                 && SYSTEM_SERVER.equals(param.processName);
         boolean isResolver = "com.android.intentresolver".equals(param.packageName);
-        if (!isSystemUi && !isSystemServer && !isResolver) return;
-        if (Build.VERSION.SDK_INT != 36 || !"Asteroids".equals(Build.DEVICE)) {
+        boolean isLauncher = "com.nothing.launcher".equals(param.packageName);
+        if (!isSystemUi && !isSystemServer && !isResolver && !isLauncher) return;
+        if ((Build.VERSION.SDK_INT < 35 || Build.VERSION.SDK_INT > 37) || !"Asteroids".equals(Build.DEVICE)) {
             XposedBridge.log(TAG + ": unsupported device/API; stock panel kept");
             return;
         }
 
+        if (isLauncher) {
+            NothingLauncherHook.install(param.classLoader);
+            NavStarHook.installLauncher(param.classLoader);
+            return;
+        }
         if (isResolver) { ShareSheetHook.install(param.classLoader); return; }
         if (isSystemServer) {
             PowerTorchHook.install(param.classLoader);
+            BatteryCapHook.install(param.classLoader);
             hookScreenOffMediaKeys(param.classLoader);
+            ScreenAnimationHook.installSystemServer(param.classLoader);
+            FlagSecureHook.install(param.classLoader);
             return;
         }
 
@@ -117,6 +126,11 @@ public final class DotSuiteHook implements IXposedHookLoadPackage {
         SystemInteractionHook.install(param.classLoader);
         NativeVisualHook.install(param.classLoader);
         BackArrowHook.install(param.classLoader);
+        TranslucentQsHook.install(param.classLoader);
+        AdvancedPowerMenuHook.install(param.classLoader);
+        DuoStatusBarHook.install(param.classLoader);
+        ScreenAnimationHook.installSystemUi(param.classLoader);
+        NavStarHook.installSystemUi(param.classLoader);
     }
 
     private static synchronized void hookLockscreen(ClassLoader classLoader) {
@@ -303,6 +317,30 @@ public final class DotSuiteHook implements IXposedHookLoadPackage {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     guardedWhenNeeded(param.thisObject, DialogController::applyControlVisibility);
+                }
+            });
+            XposedBridge.hookAllMethods(dialogClass, "computeTimeoutH", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        Context ctx = (Context) XposedHelpers.getObjectField(param.thisObject, "mContext");
+                        int timeout = Settings.Secure.getInt(ctx.getContentResolver(), io.github.wiojelt.dotsuite.data.PersonalizationPolicy.VOLUME_PANEL_TIMEOUT, 0);
+                        if (timeout >= 500 && timeout <= 10000) {
+                            param.setResult(timeout);
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            });
+            XposedBridge.hookAllMethods(dialogClass, "showSafetyWarningH", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    try {
+                        Context ctx = (Context) XposedHelpers.getObjectField(param.thisObject, "mContext");
+                        boolean disable = Settings.Secure.getInt(ctx.getContentResolver(), io.github.wiojelt.dotsuite.data.PersonalizationPolicy.DISABLE_SAFE_VOLUME, 0) == 1;
+                        if (disable) {
+                            param.setResult(null);
+                        }
+                    } catch (Throwable ignored) {}
                 }
             });
             XposedBridge.hookAllMethods(dialogClass, "toggleRingerDrawer", new XC_MethodHook() {

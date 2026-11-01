@@ -35,6 +35,7 @@
         <meta-data android:name="xposeddescription"
             android:value="DotSuite: native sound controls, gestures and optional interface tools for Nothing OS." />
         <meta-data android:name="xposedminversion" android:value="82" />
+        <meta-data android:name="xposedscope" android:resource="@array/xposed_scope" />
         <activity
             android:name=".MainActivity"
             android:launchMode="singleTop"

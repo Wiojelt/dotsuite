@@ -97,6 +97,12 @@ fun PersonalizationScreen(page: String, contentPadding: PaddingValues, onBack: (
         "dock" -> "Quick dock"
         "power" -> "Power button"
         "share" -> "Share sheet"
+        "launcher" -> "Home screen & Icons (Home Up)"
+        "duosb" -> "Status Bar (DuoSB & QuickStar)"
+        "screen-anim" -> "Screen transitions & Lock (LockStar)"
+        "navstar" -> "Navigation & Gestures (NavStar)"
+        "soundassist" -> "Volume & Audio (SoundAssistant)"
+        "security" -> "System & Privacy (FlagSecure)"
         else -> "Local diagnostics"
     }
     LazyColumn(
@@ -192,7 +198,205 @@ fun PersonalizationScreen(page: String, contentPadding: PaddingValues, onBack: (
                 item { ExtraDimSettings(revision, busy, setup.ready, ::saveString, ::restore) }
             }
             "tiles" -> {
+                item {
+                    val qsTranslucent = readInt(P.TRANSLUCENT_QS, 1) == 1
+                    var qsAlpha by remember(revision) { mutableFloatStateOf(readInt(P.QS_TRANSPARENCY, 50).toFloat()) }
+                    var qsStyle by remember(revision) { mutableIntStateOf(readInt(P.QS_TILE_STYLE, 1)) }
+                    var qsAnim by remember(revision) { mutableIntStateOf(readInt(P.QS_ANIMATION_STYLE, 1)) }
+                    SoftGroup {
+                        ToggleRow("Translucent Quick Settings", "Match Nothing OS 3.0 translucent glass theme with blurred background and glass tiles.",
+                            qsTranslucent, nativeReady) { saveInt(P.TRANSLUCENT_QS, if (it) 1 else 0) }
+                        if (qsTranslucent) {
+                            SoftDivider()
+                            DiscreteSliderSetting("Glass transparency", "Adjust background blur and frosted glass opacity level.",
+                                "${qsAlpha.roundToInt()}%", qsAlpha.coerceIn(10f, 100f), 10f..100f, 9, nativeReady,
+                                { qsAlpha = (it / 10).roundToInt() * 10f },
+                                { saveInt(P.QS_TRANSPARENCY, qsAlpha.roundToInt()) })
+                            SoftDivider()
+                            SegmentedSetting("Tile style", "Visual theme for Quick Settings capsules.",
+                                listOf(1 to "Frosted Glass", 2 to "Liquid Glass", 3 to "Capsule", 0 to "Stock"),
+                                qsStyle, nativeReady) {
+                                qsStyle = it
+                                saveInt(P.QS_TILE_STYLE, it)
+                            }
+                            SoftDivider()
+                            SegmentedSetting("Transition animation", "Enter and exit dynamics for the QS shade.",
+                                listOf(1 to "Spring", 2 to "Fade", 3 to "Pop", 0 to "Stock"),
+                                qsAnim, nativeReady) {
+                                qsAnim = it
+                                saveInt(P.QS_ANIMATION_STYLE, it)
+                            }
+                        }
+                    }
+                }
                 item { QuickTileSettings() }
+            }
+            "launcher" -> {
+                item {
+                    var rows by remember(revision) { mutableFloatStateOf(readInt(P.LAUNCHER_GRID_ROWS, 5).toFloat()) }
+                    var cols by remember(revision) { mutableFloatStateOf(readInt(P.LAUNCHER_GRID_COLS, 5).toFloat()) }
+                    var iconScale by remember(revision) { mutableFloatStateOf(readInt(P.LAUNCHER_ICON_SCALE, 100).toFloat()) }
+                    val glassIcons = readInt(P.LAUNCHER_GLASS_ICONS, 0) == 1
+                    var iconAlpha by remember(revision) { mutableFloatStateOf(readInt(P.LAUNCHER_ICON_ALPHA, 100).toFloat()) }
+                    var iconShape by remember(revision) { mutableIntStateOf(readInt(P.LAUNCHER_ICON_SHAPE, 0)) }
+                    SoftGroup {
+                        DiscreteSliderSetting("Grid rows", "Number of vertical app icon rows on desktop.",
+                            "${rows.roundToInt()} rows", rows.coerceIn(4f, 8f), 4f..8f, 4, nativeReady,
+                            { rows = it.roundToInt().toFloat() },
+                            { saveInt(P.LAUNCHER_GRID_ROWS, rows.roundToInt()) })
+                        SoftDivider()
+                        DiscreteSliderSetting("Grid columns", "Number of horizontal app icon columns on desktop.",
+                            "${cols.roundToInt()} cols", cols.coerceIn(4f, 8f), 4f..8f, 4, nativeReady,
+                            { cols = it.roundToInt().toFloat() },
+                            { saveInt(P.LAUNCHER_GRID_COLS, cols.roundToInt()) })
+                        SoftDivider()
+                        DiscreteSliderSetting("Icon scale", "Resize home screen and app drawer icons.",
+                            "${iconScale.roundToInt()}%", iconScale.coerceIn(70f, 140f), 70f..140f, 7, nativeReady,
+                            { iconScale = (it / 10).roundToInt() * 10f },
+                            { saveInt(P.LAUNCHER_ICON_SCALE, iconScale.roundToInt()) })
+                        SoftDivider()
+                        ToggleRow("Frosted glass icons", "Transform app icons into translucent frosted glass matching Nothing widgets.",
+                            glassIcons, nativeReady) { saveInt(P.LAUNCHER_GLASS_ICONS, if (it) 1 else 0) }
+                        if (glassIcons) {
+                            SoftDivider()
+                            DiscreteSliderSetting("Icon opacity", "Transparency level for desktop icons.",
+                                "${iconAlpha.roundToInt()}%", iconAlpha.coerceIn(20f, 100f), 20f..100f, 8, nativeReady,
+                                { iconAlpha = (it / 10).roundToInt() * 10f },
+                                { saveInt(P.LAUNCHER_ICON_ALPHA, iconAlpha.roundToInt()) })
+                        }
+                        SoftDivider()
+                        SegmentedSetting("Icon mask shape", "Geometric cutout style applied to launcher app icons.",
+                            listOf(0 to "Stock", 1 to "Circle", 2 to "Squircle", 3 to "Rounded"),
+                            iconShape, nativeReady) {
+                            iconShape = it
+                            saveInt(P.LAUNCHER_ICON_SHAPE, it)
+                        }
+                    }
+                }
+                item { Text("Applies to Nothing Launcher (com.nothing.launcher). Custom icon overrides from third-party icon packs can be selected in the upcoming icon pack picker.", style = MaterialTheme.typography.bodySmall) }
+            }
+            "duosb" -> {
+                item {
+                    val duoEnabled = readInt(P.DUO_STATUSBAR, 0) == 1
+                    val batteryPercent = readInt(P.DUO_BATTERY_PERCENT, 1) == 1
+                    val trafficEnabled = readInt(P.NETWORK_TRAFFIC, 0) == 1
+                    val dt2s = readInt(P.STATUS_DOUBLE_SLEEP, 0) == 1
+                    val brightnessSlider = readInt(P.STATUS_BAR_BRIGHTNESS, 0) == 1
+                    var paddingStart by remember(revision) { mutableFloatStateOf(readInt(P.STATUS_PADDING_START, 0).toFloat()) }
+                    var paddingEnd by remember(revision) { mutableFloatStateOf(readInt(P.STATUS_PADDING_END, 0).toFloat()) }
+                    val clockSeconds = readInt(P.CLOCK_SECONDS, 0) == 1
+                    val clockDay = readInt(P.CLOCK_DAY, 0) == 1
+                    SoftGroup {
+                        ToggleRow("Duo Status Bar capsule", "Unified pill capsule combining battery percentage and network indicator in Nothing aesthetic.",
+                            duoEnabled, nativeReady) { saveInt(P.DUO_STATUSBAR, if (it) 1 else 0) }
+                        if (duoEnabled) {
+                            SoftDivider()
+                            ToggleRow("Show battery percentage", "Display exact battery number inside the Duo capsule.",
+                                batteryPercent, nativeReady) { saveInt(P.DUO_BATTERY_PERCENT, if (it) 1 else 0) }
+                            SoftDivider()
+                            ToggleRow("Network speed monitor", "Display live download/upload transfer speed in status bar.",
+                                trafficEnabled, nativeReady) { saveInt(P.NETWORK_TRAFFIC, if (it) 1 else 0) }
+                        }
+                        SoftDivider()
+                        ToggleRow("Double-tap status bar to sleep", "Turn off display by double tapping anywhere along the top edge.",
+                            dt2s, nativeReady) { saveInt(P.STATUS_DOUBLE_SLEEP, if (it) 1 else 0) }
+                        SoftDivider()
+                        ToggleRow("Brightness gesture slider", "Slide horizontally across status bar to smoothly change screen brightness.",
+                            brightnessSlider, nativeReady) { saveInt(P.STATUS_BAR_BRIGHTNESS, if (it) 1 else 0) }
+                        SoftDivider()
+                        DiscreteSliderSetting("Left margin padding", "Horizontal inset spacing on status bar start edge.",
+                            "${paddingStart.roundToInt()} dp", paddingStart.coerceIn(0f, 32f), 0f..32f, 8, nativeReady,
+                            { paddingStart = (it / 4).roundToInt() * 4f },
+                            { saveInt(P.STATUS_PADDING_START, paddingStart.roundToInt()) })
+                        SoftDivider()
+                        DiscreteSliderSetting("Right margin padding", "Horizontal inset spacing on status bar end edge.",
+                            "${paddingEnd.roundToInt()} dp", paddingEnd.coerceIn(0f, 32f), 0f..32f, 8, nativeReady,
+                            { paddingEnd = (it / 4).roundToInt() * 4f },
+                            { saveInt(P.STATUS_PADDING_END, paddingEnd.roundToInt()) })
+                        SoftDivider()
+                        ToggleRow("Status bar clock seconds", "Show ticking seconds (HH:mm:ss) on status bar clock.",
+                            clockSeconds, nativeReady) { saveInt(P.CLOCK_SECONDS, if (it) 1 else 0) }
+                        SoftDivider()
+                        ToggleRow("Status bar weekday", "Prepend short day of week (e.g. Mon, Tue) before the clock.",
+                            clockDay, nativeReady) { saveInt(P.CLOCK_DAY, if (it) 1 else 0) }
+                    }
+                }
+                item { Text("Inspired by DuoSB (kvmy666) & NothingTweaks. Injects directly into PhoneStatusBarView without replacing system components.", style = MaterialTheme.typography.bodySmall) }
+            }
+            "navstar" -> {
+                item {
+                    val hidePill = readInt(P.HIDE_NAV_PILL, 0) == 1
+                    val backKill = readInt(P.BACK_GESTURE_KILL, 0) == 1
+                    var holdMs by remember(revision) { mutableFloatStateOf(readInt(P.BACK_GESTURE_TIMEOUT, 450).toFloat()) }
+                    SoftGroup {
+                        ToggleRow("Hide gesture bar line (Pill)", "Removes the navigation bar bottom bar and margin for full screen immersive display.",
+                            hidePill, nativeReady) { saveInt(P.HIDE_NAV_PILL, if (it) 1 else 0) }
+                        SoftDivider()
+                        ToggleRow("Long press back to kill app", "Hold the edge back gesture to force-close the foreground application.",
+                            backKill, nativeReady) { saveInt(P.BACK_GESTURE_KILL, if (it) 1 else 0) }
+                        if (backKill) {
+                            SoftDivider()
+                            DiscreteSliderSetting("Hold duration to kill", "Time needed to hold edge back gesture before terminating app.",
+                                "${holdMs.roundToInt()}ms", holdMs.coerceIn(200f, 1000f), 200f..1000f, 8, nativeReady,
+                                { holdMs = (it / 50).roundToInt() * 50f },
+                                { saveInt(P.BACK_GESTURE_TIMEOUT, holdMs.roundToInt()) })
+                        }
+                    }
+                }
+                item { Text("Equivalent to Samsung Good Lock NavStar. Injects directly into NavigationBarView and EdgeBackGestureHandler.", style = MaterialTheme.typography.bodySmall) }
+            }
+            "soundassist" -> {
+                item {
+                    var timeoutMs by remember(revision) { mutableFloatStateOf(readInt(P.VOLUME_PANEL_TIMEOUT, 3000).toFloat()) }
+                    val disableSafeVol = readInt(P.DISABLE_SAFE_VOLUME, 0) == 1
+                    SoftGroup {
+                        DiscreteSliderSetting("Volume dialog timeout", "Duration the volume slider popup remains visible on screen.",
+                            "${(timeoutMs / 1000).toString().take(3)}s (${timeoutMs.roundToInt()}ms)",
+                            timeoutMs.coerceIn(500f, 10000f), 500f..10000f, 19, nativeReady,
+                            { timeoutMs = (it / 500).roundToInt() * 500f },
+                            { saveInt(P.VOLUME_PANEL_TIMEOUT, timeoutMs.roundToInt()) })
+                        SoftDivider()
+                        ToggleRow("Disable safe volume warning", "Prevent the high volume hearing damage warning popup when turning up audio.",
+                            disableSafeVol, nativeReady) { saveInt(P.DISABLE_SAFE_VOLUME, if (it) 1 else 0) }
+                    }
+                }
+                item { Text("Equivalent to Samsung Good Lock SoundAssistant. Injects directly into VolumeDialogImpl and AudioManager.", style = MaterialTheme.typography.bodySmall) }
+            }
+            "security" -> {
+                item {
+                    val bypassSecure = readInt(P.BYPASS_FLAG_SECURE, 0) == 1
+                    SoftGroup {
+                        ToggleRow("Bypass FLAG_SECURE", "Permit screenshots, screen mirroring and video recordings across protected banking and DRM apps.",
+                            bypassSecure, nativeReady) { saveInt(P.BYPASS_FLAG_SECURE, if (it) 1 else 0) }
+                    }
+                }
+                item { Text("Directly overrides WindowState.isSecureLocked in System Server. Fully reversible at any time.", style = MaterialTheme.typography.bodySmall) }
+            }
+            "screen-anim" -> {
+                item {
+                    var animStyle by remember(revision) { mutableIntStateOf(readInt(P.SCREEN_OFF_ANIM, 0)) }
+                    val chargingInfo = readInt(P.LOCKSCREEN_CHARGING_INFO, 1) == 1
+                    val scramblePin = readInt(P.SCRAMBLE_PIN, 0) == 1
+                    val hidePin = readInt(P.HIDE_PIN_INPUT, 0) == 1
+                    SoftGroup {
+                        SegmentedSetting("Screen-off animation", "Transition effect when turning off display.",
+                            listOf(0 to "Stock", 1 to "CRT TV", 2 to "Fade", 3 to "Scale"),
+                            animStyle, nativeReady) {
+                            animStyle = it
+                            saveInt(P.SCREEN_OFF_ANIM, it)
+                        }
+                        SoftDivider()
+                        ToggleRow("Lock screen charging wattage", "Show live power wattage (W), voltage (V) and current (mA) when charging.",
+                            chargingInfo, nativeReady) { saveInt(P.LOCKSCREEN_CHARGING_INFO, if (it) 1 else 0) }
+                        SoftDivider()
+                        ToggleRow("Scramble PIN keypad", "Randomize the 0-9 digits on lock screen keypad on each unlock.",
+                            scramblePin, nativeReady) { saveInt(P.SCRAMBLE_PIN, if (it) 1 else 0) }
+                        SoftDivider()
+                        ToggleRow("Hide PIN input dots", "Keep entered digits completely invisible to nearby eyes.",
+                            hidePin, nativeReady) { saveInt(P.HIDE_PIN_INPUT, if (it) 1 else 0) }
+                    }
+                }
+                item { Text("Screen-off transitions hook DisplayPowerController ColorFade. PIN privacy hooks KeyguardPINView natively.", style = MaterialTheme.typography.bodySmall) }
             }
             "feedback" -> {
                 item { FeedbackSettings(revision, busy, setup.ready, ::saveString, ::restore) }
@@ -205,9 +409,48 @@ fun PersonalizationScreen(page: String, contentPadding: PaddingValues, onBack: (
             "dock" -> { item { DockSettings() } }
             "power" -> {
                 item { SoftGroup {
-                    ToggleRow("Screen-off long press for flashlight", "Uses only an unassigned native screen-off action.", readInt(P.POWER_TORCH) == 1,
+                    val torchEnabled = readInt(P.POWER_TORCH) == 1
+                    var torchLevel by remember(revision) { mutableFloatStateOf(readInt(P.TORCH_LEVEL, 5).toFloat()) }
+                    var caffeinateTime by remember(revision) { mutableIntStateOf(readInt(P.CAFFEINATE_TIMEOUT, 0)) }
+                    ToggleRow("Screen-off long press for flashlight", "Uses only an unassigned native screen-off action.", torchEnabled,
                         nativeReady) { saveInt(P.POWER_TORCH, if (it) 1 else 0) }
+                    if (torchEnabled) {
+                        SoftDivider()
+                        DiscreteSliderSetting("Flashlight intensity", "Brightness level for LED torch via Nothing CameraManager.",
+                            "Level ${torchLevel.roundToInt()}", torchLevel.coerceIn(1f, 10f), 1f..10f, 9, nativeReady,
+                            { torchLevel = it.roundToInt().toFloat() },
+                            { saveInt(P.TORCH_LEVEL, torchLevel.roundToInt()) })
+                    }
+                    SoftDivider()
+                    SegmentedSetting("Caffeinate keep-awake", "Prevent screen sleep while on dock or charging.",
+                        listOf(0 to "Off", 5 to "5m", 10 to "10m", 30 to "30m", -1 to "Inf"),
+                        caffeinateTime, nativeReady) {
+                        caffeinateTime = it
+                        saveInt(P.CAFFEINATE_TIMEOUT, it)
+                    }
+                    SoftDivider()
+                    ToggleRow("Advanced power menu", "Add Recovery and Bootloader reboot options into power menu.",
+                        readInt(P.ADVANCED_POWER_MENU) == 1, nativeReady) { saveInt(P.ADVANCED_POWER_MENU, if (it) 1 else 0) }
                 } }
+                item { SectionLabel("Battery protection") }
+                item {
+                    var capEnabled by remember(revision) { mutableStateOf(readInt(P.BATTERY_CAP_ENABLED) == 1) }
+                    var capLevel by remember(revision) { mutableFloatStateOf(readInt(P.BATTERY_CAP_LEVEL, 80).toFloat()) }
+                    SoftGroup {
+                        ToggleRow("Charge limit", "Pauses charging via Nothing ICharge HAL when battery reaches target.",
+                            capEnabled, nativeReady) {
+                            capEnabled = it
+                            saveInt(P.BATTERY_CAP_ENABLED, if (it) 1 else 0)
+                        }
+                        if (capEnabled) {
+                            SoftDivider()
+                            DiscreteSliderSetting("Stop level", "Battery holds charge at this percentage.", "${capLevel.roundToInt()}%",
+                                capLevel.coerceIn(50f, 100f), 50f..100f, 10, nativeReady,
+                                { capLevel = (it / 5).roundToInt() * 5f },
+                                { saveInt(P.BATTERY_CAP_LEVEL, capLevel.roundToInt()) })
+                        }
+                    }
+                }
                 item { Text("Short press, double press, SOS, key combinations and screen-on long press stay native. If Nothing OS already assigns this screen-off gesture, DotSuite skips it. It never rewrites system button settings.", style = MaterialTheme.typography.bodySmall) }
                 item { Text(when (readInt(P.POWER_TORCH_STATUS)) {
                     1 -> "Last attempt: flashlight changed"
