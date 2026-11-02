@@ -60,7 +60,7 @@ internal fun RecoverySettings() {
                     P.LAUNCHER_GLASS_ICONS, P.DUO_STATUSBAR, P.NETWORK_TRAFFIC,
                     P.SCRAMBLE_PIN, P.HIDE_PIN_INPUT, P.SCREEN_OFF_ANIM,
                     P.STATUS_BAR_BRIGHTNESS, P.BACK_GESTURE_KILL, P.BYPASS_FLAG_SECURE,
-                    P.DISABLE_SAFE_VOLUME, P.EARPHONE_ICON, P.HIDE_NAV_PILL
+                    P.DISABLE_SAFE_VOLUME, P.EARPHONE_ICON, P.HIDE_NAV_PILL, P.SCREEN_ON_ANIM_STYLE, P.APP_LAUNCH_ANIM_STYLE
                 ).map { SoundSettings.write(it, 0) }
                 val allDisabled = results.all { it }
                 status = if (allDisabled) "New gestures and share filtering disabled; assignments kept" else "Some changes could not be disabled; check Shizuku / Sui"

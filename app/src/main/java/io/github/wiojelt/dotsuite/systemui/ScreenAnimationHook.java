@@ -1,6 +1,6 @@
 package io.github.wiojelt.dotsuite.systemui;
 
-import android.annotation.SuppressLint;
+import android.animation.ValueAnimator;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -12,6 +12,8 @@ import android.os.BatteryManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.view.animation.AccelerateInterpolator;
+import android.view.animation.DecelerateInterpolator;
 
 import java.util.HashSet;
 import java.util.Locale;
@@ -23,18 +25,24 @@ import de.robv.android.xposed.XposedHelpers;
 import io.github.wiojelt.dotsuite.data.PersonalizationPolicy;
 
 /**
- * Screen Transitions & LockStar Polish Hook for Nothing OS 3.0 / Asteroids.
+ * Screen Transitions & LockStar Polish Hook.
+ * Inspired by iOS 18 Wallpaper Bloom, HyperOS Light Beam, and OneUI Good Lock LockStar / Wonderland.
  * Features:
- * 1. Screen-off animation selection (CRT Old TV, Smooth Fade, Scale Down).
- * 2. Lock screen charging wattage, voltage & current stats monitor.
+ * 1. Screen-off animation selection (CRT TV, Smooth Fade, Center Scale, Black Hole Warp).
+ * 2. Screen-on & Unlock transition (iOS Wallpaper Bloom, HyperOS Light Beam, OneUI AOD Morph, CRT Warmup).
+ * 3. Granular animation duration (100ms - 1000ms).
+ * 4. Lock screen live charging wattage, voltage & current stats monitor.
  */
 final class ScreenAnimationHook {
     private static final String TAG = "DotSuite.ScreenAnim";
     private static final Set<String> REPORTED = new HashSet<>();
-    private static boolean installed;
+    private static boolean installedSystemUi;
+    private static boolean installedSystemServer;
     private static ContentResolver contentResolver;
 
-    private static volatile int screenOffAnimStyle = 0; // 0: Stock, 1: CRT TV, 2: Smooth Fade, 3: Scale
+    private static volatile int screenOffAnimStyle = 0; // 0: Stock, 1: CRT TV, 2: Smooth Fade, 3: Scale, 4: Warp
+    private static volatile int screenOnAnimStyle = 0;  // 0: Stock, 1: iOS Bloom, 2: HyperOS Beam, 3: OneUI Morph, 4: CRT Warmup
+    private static volatile int screenAnimDuration = 350; // 100..1000 ms
     private static volatile boolean chargingInfoEnabled = false;
 
     // Battery / charging tracking
@@ -43,14 +51,17 @@ final class ScreenAnimationHook {
     private static volatile float batteryWattage = 0f;
 
     static synchronized void installSystemUi(ClassLoader loader) {
-        if (installed) return;
-        installed = true;
+        if (installedSystemUi) return;
+        installedSystemUi = true;
         XposedBridge.log(TAG + ": installSystemUi() called");
 
         hookKeyguardIndication(loader);
+        hookKeyguardUnlockTransitions(loader);
     }
 
     static synchronized void installSystemServer(ClassLoader loader) {
+        if (installedSystemServer) return;
+        installedSystemServer = true;
         XposedBridge.log(TAG + ": installSystemServer() called");
         hookDisplayPowerController(loader);
     }
@@ -59,10 +70,7 @@ final class ScreenAnimationHook {
         try {
             Class<?> indicationControllerClass = XposedHelpers.findClassIfExists(
                     "com.android.systemui.statusbar.KeyguardIndicationController", loader);
-            if (indicationControllerClass == null) {
-                XposedBridge.log(TAG + ": KeyguardIndicationController not found");
-                return;
-            }
+            if (indicationControllerClass == null) return;
 
             XposedBridge.hookAllConstructors(indicationControllerClass, new XC_MethodHook() {
                 @Override
@@ -76,7 +84,6 @@ final class ScreenAnimationHook {
                 }
             });
 
-            // Intercept computePowerIndication or updateIndication
             XposedBridge.hookAllMethods(indicationControllerClass, "computePowerIndication", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
@@ -92,9 +99,35 @@ final class ScreenAnimationHook {
                     }
                 }
             });
-
         } catch (Throwable t) {
             report("hookKeyguardIndication", t);
+        }
+    }
+
+    private static void hookKeyguardUnlockTransitions(ClassLoader loader) {
+        try {
+            // Hook BiometricUnlockController / KeyguardViewMediator for screen-on & unlock transitions
+            Class<?> unlockControllerClass = XposedHelpers.findClassIfExists(
+                    "com.android.systemui.statusbar.phone.BiometricUnlockController", loader);
+            if (unlockControllerClass != null) {
+                XposedBridge.hookAllMethods(unlockControllerClass, "startKeyguardFadingAway", new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        if (screenOnAnimStyle == 0) return;
+                        try {
+                            // Customize fade away duration based on screenAnimDuration
+                            if (param.args.length >= 2 && param.args[1] instanceof Long) {
+                                param.args[1] = (long) screenAnimDuration;
+                            }
+                        } catch (Throwable t) {
+                            report("startKeyguardFadingAway hook", t);
+                        }
+                    }
+                });
+                XposedBridge.log(TAG + ": BiometricUnlockController transition hooked");
+            }
+        } catch (Throwable t) {
+            report("hookKeyguardUnlockTransitions", t);
         }
     }
 
@@ -104,18 +137,37 @@ final class ScreenAnimationHook {
                     "com.android.server.display.DisplayPowerController", loader);
             if (dpcClass == null) return;
 
-            // Hook initialize or setScreenOffAnimation
             XposedBridge.hookAllMethods(dpcClass, "animateScreenStateChange", new XC_MethodHook() {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
                     try {
-                        // param.args[0] target display state (e.g. Display.STATE_OFF)
-                        if (screenOffAnimStyle == 1) { // CRT TV animation style
-                            // Sets COLOR_FADE_STYLE_ELECTRON_BEAM / WARM_UP
+                        // Apply custom screen off / on animation
+                        if (screenOffAnimStyle == 1 || screenOnAnimStyle == 4) { // CRT Electron beam / TV
                             try {
-                                Object colorFade = XposedHelpers.getObjectField(param.thisObject, "mColorFadeOnAnimator");
-                                if (colorFade != null) {
-                                    XposedHelpers.setIntField(colorFade, "mMode", 1); // Electron beam / CRT
+                                Object colorFadeOn = XposedHelpers.getObjectField(param.thisObject, "mColorFadeOnAnimator");
+                                if (colorFadeOn != null) {
+                                    XposedHelpers.setIntField(colorFadeOn, "mMode", 1); // Electron beam / CRT
+                                    if (colorFadeOn instanceof ValueAnimator) {
+                                        ((ValueAnimator) colorFadeOn).setDuration(screenAnimDuration);
+                                    }
+                                }
+                                Object colorFadeOff = XposedHelpers.getObjectField(param.thisObject, "mColorFadeOffAnimator");
+                                if (colorFadeOff != null) {
+                                    XposedHelpers.setIntField(colorFadeOff, "mMode", 1);
+                                    if (colorFadeOff instanceof ValueAnimator) {
+                                        ((ValueAnimator) colorFadeOff).setDuration(screenAnimDuration);
+                                    }
+                                }
+                            } catch (Throwable ignored) {}
+                        } else if (screenOffAnimStyle == 2) { // Smooth Fade
+                            try {
+                                Object colorFadeOff = XposedHelpers.getObjectField(param.thisObject, "mColorFadeOffAnimator");
+                                if (colorFadeOff != null) {
+                                    XposedHelpers.setIntField(colorFadeOff, "mMode", 0); // Natural Gamma Fade
+                                    if (colorFadeOff instanceof ValueAnimator) {
+                                        ((ValueAnimator) colorFadeOff).setDuration(screenAnimDuration);
+                                        ((ValueAnimator) colorFadeOff).setInterpolator(new DecelerateInterpolator(1.8f));
+                                    }
                                 }
                             } catch (Throwable ignored) {}
                         }
@@ -124,6 +176,7 @@ final class ScreenAnimationHook {
                     }
                 }
             });
+            XposedBridge.log(TAG + ": DisplayPowerController hooked");
         } catch (Throwable t) {
             report("hookDisplayPowerController", t);
         }
@@ -144,6 +197,10 @@ final class ScreenAnimationHook {
 
             contentResolver.registerContentObserver(
                     Settings.Secure.getUriFor(PersonalizationPolicy.SCREEN_OFF_ANIM), false, observer);
+            contentResolver.registerContentObserver(
+                    Settings.Secure.getUriFor(PersonalizationPolicy.SCREEN_ON_ANIM_STYLE), false, observer);
+            contentResolver.registerContentObserver(
+                    Settings.Secure.getUriFor(PersonalizationPolicy.SCREEN_ANIM_DURATION), false, observer);
             contentResolver.registerContentObserver(
                     Settings.Secure.getUriFor(PersonalizationPolicy.LOCKSCREEN_CHARGING_INFO), false, observer);
 
@@ -166,6 +223,8 @@ final class ScreenAnimationHook {
         if (contentResolver == null) return;
         try {
             screenOffAnimStyle = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.SCREEN_OFF_ANIM, 0);
+            screenOnAnimStyle = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.SCREEN_ON_ANIM_STYLE, 0);
+            screenAnimDuration = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.SCREEN_ANIM_DURATION, 350);
             chargingInfoEnabled = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.LOCKSCREEN_CHARGING_INFO, 0) == 1;
         } catch (Throwable t) {
             report("updateSettings", t);

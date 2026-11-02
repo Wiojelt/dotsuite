@@ -19,6 +19,13 @@ public final class PersonalizationPolicy {
     public static final String QS_TRANSPARENCY = PREFIX + "qs_transparency";
     public static final String QS_TILE_STYLE = PREFIX + "qs_tile_style";
     public static final String QS_ANIMATION_STYLE = PREFIX + "qs_anim_style";
+    public static final String QS_SCRIM_DARKENING = PREFIX + "qs_scrim_darkening";
+    public static final String QS_TEXT_CONTRAST_MODE = PREFIX + "qs_text_contrast_mode";
+    public static final String APP_LAUNCH_ANIM_STYLE = PREFIX + "app_launch_anim_style";
+    public static final String APP_LAUNCH_ANIM_DURATION = PREFIX + "app_launch_anim_duration";
+    public static final String APP_LAUNCH_SPRING_DAMPING = PREFIX + "app_launch_spring_damping";
+    public static final String SCREEN_ON_ANIM_STYLE = PREFIX + "screen_on_anim_style";
+    public static final String SCREEN_ANIM_DURATION = PREFIX + "screen_anim_duration";
     public static final String LAUNCHER_GRID_ROWS = PREFIX + "launcher_grid_rows";
     public static final String LAUNCHER_GRID_COLS = PREFIX + "launcher_grid_cols";
     public static final String LAUNCHER_ICON_SCALE = PREFIX + "launcher_icon_scale";
@@ -93,7 +100,9 @@ public final class PersonalizationPolicy {
         if (TORCH_LEVEL.equals(key)) return value >= 1 && value <= 10;
         if (CAFFEINATE_TIMEOUT.equals(key)) return value >= -1 && value <= 60;
         if (LAUNCHER_ICON_SHAPE.equals(key)) return value >= 0 && value <= 3;
-        if (BATTERY_CAP_LEVEL.equals(key) || QS_TRANSPARENCY.equals(key) || LAUNCHER_ICON_ALPHA.equals(key)) return value >= 0 && value <= 100;
+        if (BATTERY_CAP_LEVEL.equals(key) || QS_TRANSPARENCY.equals(key) || LAUNCHER_ICON_ALPHA.equals(key) || QS_SCRIM_DARKENING.equals(key) || APP_LAUNCH_SPRING_DAMPING.equals(key)) return value >= 0 && value <= 100;
+        if (QS_TILE_STYLE.equals(key) || QS_ANIMATION_STYLE.equals(key) || SCREEN_OFF_ANIM.equals(key) || QS_TEXT_CONTRAST_MODE.equals(key) || APP_LAUNCH_ANIM_STYLE.equals(key) || SCREEN_ON_ANIM_STYLE.equals(key)) return value >= 0 && value <= 5;
+        if (APP_LAUNCH_ANIM_DURATION.equals(key) || SCREEN_ANIM_DURATION.equals(key)) return value >= 50 && value <= 2000;
         if (QS_TILE_STYLE.equals(key) || QS_ANIMATION_STYLE.equals(key) || SCREEN_OFF_ANIM.equals(key)) return value >= 0 && value <= 4;
         if (LAUNCHER_GRID_ROWS.equals(key) || LAUNCHER_GRID_COLS.equals(key)) return value >= 3 && value <= 9;
         if (LAUNCHER_ICON_SCALE.equals(key)) return value >= 50 && value <= 150;

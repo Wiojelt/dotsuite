@@ -203,10 +203,17 @@ fun PersonalizationScreen(page: String, contentPadding: PaddingValues, onBack: (
                     var qsAlpha by remember(revision) { mutableFloatStateOf(readInt(P.QS_TRANSPARENCY, 50).toFloat()) }
                     var qsStyle by remember(revision) { mutableIntStateOf(readInt(P.QS_TILE_STYLE, 1)) }
                     var qsAnim by remember(revision) { mutableIntStateOf(readInt(P.QS_ANIMATION_STYLE, 1)) }
+                    var qsScrim by remember(revision) { mutableFloatStateOf(readInt(P.QS_SCRIM_DARKENING, 65).toFloat()) }
+                    var qsContrast by remember(revision) { mutableIntStateOf(readInt(P.QS_TEXT_CONTRAST_MODE, 0)) }
                     SoftGroup {
-                        ToggleRow("Translucent Quick Settings", "Match Nothing OS 3.0 translucent glass theme with blurred background and glass tiles.",
+                        ToggleRow("Translucent Quick Settings", "High-contrast smoked frosted glass theme with blurred background.",
                             qsTranslucent, nativeReady) { saveInt(P.TRANSLUCENT_QS, if (it) 1 else 0) }
                         if (qsTranslucent) {
+                            SoftDivider()
+                            DiscreteSliderSetting("Dark backdrop scrim", "Smoked glass backdrop tint preventing whiteout and maximizing text readability.",
+                                "${qsScrim.roundToInt()}%", qsScrim.coerceIn(10f, 95f), 10f..95f, 17, nativeReady,
+                                { qsScrim = (it / 5).roundToInt() * 5f },
+                                { saveInt(P.QS_SCRIM_DARKENING, qsScrim.roundToInt()) })
                             SoftDivider()
                             DiscreteSliderSetting("Glass transparency", "Adjust background blur and frosted glass opacity level.",
                                 "${qsAlpha.roundToInt()}%", qsAlpha.coerceIn(10f, 100f), 10f..100f, 9, nativeReady,
@@ -214,10 +221,17 @@ fun PersonalizationScreen(page: String, contentPadding: PaddingValues, onBack: (
                                 { saveInt(P.QS_TRANSPARENCY, qsAlpha.roundToInt()) })
                             SoftDivider()
                             SegmentedSetting("Tile style", "Visual theme for Quick Settings capsules.",
-                                listOf(1 to "Frosted Glass", 2 to "Liquid Glass", 3 to "Capsule", 0 to "Stock"),
+                                listOf(1 to "Frosted Glass", 2 to "Liquid Cyan", 3 to "Red Dot", 4 to "Obsidian", 0 to "Stock"),
                                 qsStyle, nativeReady) {
                                 qsStyle = it
                                 saveInt(P.QS_TILE_STYLE, it)
+                            }
+                            SoftDivider()
+                            SegmentedSetting("Typography contrast", "Inverts labels and icons on bright glass to eliminate unreadable whiteout.",
+                                listOf(0 to "Auto AAA", 1 to "High Contrast", 2 to "Minimal White"),
+                                qsContrast, nativeReady) {
+                                qsContrast = it
+                                saveInt(P.QS_TEXT_CONTRAST_MODE, it)
                             }
                             SoftDivider()
                             SegmentedSetting("Transition animation", "Enter and exit dynamics for the QS shade.",
@@ -270,6 +284,28 @@ fun PersonalizationScreen(page: String, contentPadding: PaddingValues, onBack: (
                             iconShape, nativeReady) {
                             iconShape = it
                             saveInt(P.LAUNCHER_ICON_SHAPE, it)
+                        }
+                        SoftDivider()
+                        var appLaunchStyle by remember(revision) { mutableIntStateOf(readInt(P.APP_LAUNCH_ANIM_STYLE, 1)) }
+                        var launchDuration by remember(revision) { mutableFloatStateOf(readInt(P.APP_LAUNCH_ANIM_DURATION, 380).toFloat()) }
+                        var springDamping by remember(revision) { mutableFloatStateOf(readInt(P.APP_LAUNCH_SPRING_DAMPING, 78).toFloat()) }
+                        SegmentedSetting("App launch animation", "Opening dynamics adapted from iOS, HyperOS and OneUI Good Lock.",
+                            listOf(1 to "iOS Spring", 2 to "HyperOS", 3 to "OneUI", 4 to "Nothing Dot", 0 to "Stock"),
+                            appLaunchStyle, nativeReady) {
+                            appLaunchStyle = it
+                            saveInt(P.APP_LAUNCH_ANIM_STYLE, it)
+                        }
+                        if (appLaunchStyle != 0) {
+                            SoftDivider()
+                            DiscreteSliderSetting("App launch duration", "Speed of the icon-to-window expansion transition.",
+                                "${launchDuration.roundToInt()}ms", launchDuration.coerceIn(150f, 800f), 150f..800f, 13, nativeReady,
+                                { launchDuration = (it / 25).roundToInt() * 25f },
+                                { saveInt(P.APP_LAUNCH_ANIM_DURATION, launchDuration.roundToInt()) })
+                            SoftDivider()
+                            DiscreteSliderSetting("Spring physics damping", "Low bounce fluid resistance for smooth iOS-like opening.",
+                                String.format(java.util.Locale.US, "%.2f", springDamping / 100f), springDamping.coerceIn(50f, 100f), 50f..100f, 10, nativeReady,
+                                { springDamping = (it / 5).roundToInt() * 5f },
+                                { saveInt(P.APP_LAUNCH_SPRING_DAMPING, springDamping.roundToInt()) })
                         }
                     }
                 }
@@ -374,16 +410,32 @@ fun PersonalizationScreen(page: String, contentPadding: PaddingValues, onBack: (
             }
             "screen-anim" -> {
                 item {
-                    var animStyle by remember(revision) { mutableIntStateOf(readInt(P.SCREEN_OFF_ANIM, 0)) }
+                    var offAnimStyle by remember(revision) { mutableIntStateOf(readInt(P.SCREEN_OFF_ANIM, 0)) }
+                    var onAnimStyle by remember(revision) { mutableIntStateOf(readInt(P.SCREEN_ON_ANIM_STYLE, 0)) }
+                    var screenDuration by remember(revision) { mutableFloatStateOf(readInt(P.SCREEN_ANIM_DURATION, 350).toFloat()) }
                     val chargingInfo = readInt(P.LOCKSCREEN_CHARGING_INFO, 1) == 1
                     val scramblePin = readInt(P.SCRAMBLE_PIN, 0) == 1
                     val hidePin = readInt(P.HIDE_PIN_INPUT, 0) == 1
                     SoftGroup {
                         SegmentedSetting("Screen-off animation", "Transition effect when turning off display.",
-                            listOf(0 to "Stock", 1 to "CRT TV", 2 to "Fade", 3 to "Scale"),
-                            animStyle, nativeReady) {
-                            animStyle = it
+                            listOf(0 to "Stock", 1 to "CRT TV", 2 to "Smooth Fade", 3 to "Center Scale", 4 to "Black Hole"),
+                            offAnimStyle, nativeReady) {
+                            offAnimStyle = it
                             saveInt(P.SCREEN_OFF_ANIM, it)
+                        }
+                        SoftDivider()
+                        SegmentedSetting("Screen-on / Unlock transition", "Choreography when waking screen or unlocking (iOS Bloom, HyperOS, OneUI).",
+                            listOf(1 to "iOS Bloom", 2 to "HyperOS Beam", 3 to "OneUI Morph", 4 to "CRT Warmup", 0 to "Stock"),
+                            onAnimStyle, nativeReady) {
+                            onAnimStyle = it
+                            saveInt(P.SCREEN_ON_ANIM_STYLE, it)
+                        }
+                        if (offAnimStyle != 0 || onAnimStyle != 0) {
+                            SoftDivider()
+                            DiscreteSliderSetting("Screen transition duration", "Timing curve duration for display power transitions.",
+                                "${screenDuration.roundToInt()}ms", screenDuration.coerceIn(100f, 1000f), 100f..1000f, 9, nativeReady,
+                                { screenDuration = (it / 50).roundToInt() * 50f },
+                                { saveInt(P.SCREEN_ANIM_DURATION, screenDuration.roundToInt()) })
                         }
                         SoftDivider()
                         ToggleRow("Lock screen charging wattage", "Show live power wattage (W), voltage (V) and current (mA) when charging.",
@@ -396,7 +448,7 @@ fun PersonalizationScreen(page: String, contentPadding: PaddingValues, onBack: (
                             hidePin, nativeReady) { saveInt(P.HIDE_PIN_INPUT, if (it) 1 else 0) }
                     }
                 }
-                item { Text("Screen-off transitions hook DisplayPowerController ColorFade. PIN privacy hooks KeyguardPINView natively.", style = MaterialTheme.typography.bodySmall) }
+                item { Text("Screen-off and unlock transitions hook DisplayPowerController & KeyguardViewMediator. PIN privacy hooks KeyguardPINView.", style = MaterialTheme.typography.bodySmall) }
             }
             "feedback" -> {
                 item { FeedbackSettings(revision, busy, setup.ready, ::saveString, ::restore) }

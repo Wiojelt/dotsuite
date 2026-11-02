@@ -19,13 +19,9 @@ import de.robv.android.xposed.XposedHelpers;
 import io.github.wiojelt.dotsuite.data.PersonalizationPolicy;
 
 /**
- * Translucent Quick Settings & Frosted Glass Tiles hook for Nothing OS 3.0 / Asteroids.
- * Hooks:
- * 1. ShadeColors#shadePanelScrimBehind -> removes pitch black overlay, allowing wallpaper blur to shine through.
- * 2. ShadeColors#shadePanel -> replaces opaque shade panel with frosted glass tint.
- * 3. QuickSettingsShadeOverlayContentViewModel -> enables transparency for the Dual Shade overlay.
- * 4. TileContentColorsKt -> replaces Compose QS tile background with translucent frosted glass.
- * 5. ScrimController & DepthController -> maintains wallpaper blur and light scrim.
+ * Translucent Quick Settings, High-Contrast Frosted Glass Tiles & Scrim Hook.
+ * Inspired by iOS Control Center, OneUI QuickStar, and Nothing OS Cyberpunk aesthetics.
+ * Solves washed out / unreadable text with dynamic smoked glass scrim and inverted tile typography.
  */
 final class TranslucentQsHook {
     private static final String TAG = "DotSuite.TranslucentQs";
@@ -33,16 +29,19 @@ final class TranslucentQsHook {
     private static boolean installed;
     private static volatile boolean enabled = true;
     private static volatile int qsTransparency = 50; // 0..100
-    private static volatile int qsTileStyle = 1; // 0: Stock, 1: Frosted Glass, 2: Liquid Glass
+    private static volatile int qsTileStyle = 1; // 0: Stock, 1: Frosted Glass, 2: Liquid Glass, 3: Nothing Red, 4: Obsidian
+    private static volatile int qsScrimDarkening = 65; // 10..95 (%) dark scrim for high contrast
+    private static volatile int qsTextContrastMode = 0; // 0: Auto WCAG AAA, 1: Inverted Black on Active, 2: Pure Minimal White
     private static ContentResolver contentResolver;
     private static ContentObserver contentObserver;
 
-    // Translucent frosted glass colors matching Nothing OS 3.0 widget & folder styling
-    private static final int COLOR_FROSTED_INACTIVE = 0x2EFFFFFF;     // ~18% translucent white glass
-    private static final int COLOR_FROSTED_UNAVAILABLE = 0x1AFFFFFF;  // ~10% translucent white glass
-    private static final int COLOR_FROSTED_ACTIVE = 0xEEFFFFFF;       // ~93% crisp frosted white
-    private static final int COLOR_FROSTED_SCRIM = 0x24000000;        // ~14% subtle dark scrim tint
-    private static final int COLOR_FROSTED_PANEL = 0x1FFFFFFF;        // ~12% subtle frosted glass panel tint
+    // High contrast smoked frosted glass colors
+    private static final int COLOR_OBSIDIAN_PANEL = 0x88121214;       // Smoked dark translucent glass
+    private static final int COLOR_FROSTED_ACTIVE_WHITE = 0xFFFFFFFF; // Pure crisp white
+    private static final int COLOR_TEXT_DARK = 0xFF111111;            // AAA contrast on white
+    private static final int COLOR_TEXT_LIGHT = 0xFFFFFFFF;           // Crisp white
+    private static final int COLOR_TEXT_MUTED = 0xB3FFFFFF;           // 70% white
+    private static final int COLOR_TEXT_SUBTLE = 0xFF333333;          // Subtle dark for secondary label
 
     // Resource IDs
     private static int idQsTileInactiveBg = -1;
@@ -52,6 +51,11 @@ final class TranslucentQsHook {
     private static int idQsTileMedUnavailBg = -1;
     private static int idQsTileLargeUnavailBg = -1;
     private static int idQsTileOffBg = -1;
+    private static int idQsTileLabelActive = -1;
+    private static int idQsTileLabelInactive = -1;
+    private static int idQsTileIconActive = -1;
+    private static int idQsTileIconInactive = -1;
+    private static int idQsTileSecondaryLabelInactive = -1;
     private static int idNtScrimBehind1 = -1;
     private static int idNtScrimBehind2 = -1;
     private static int idNtScrimBehindColor = -1;
@@ -95,31 +99,48 @@ final class TranslucentQsHook {
         if (contentResolver != null || context == null) return;
         try {
             contentResolver = context.getApplicationContext().getContentResolver();
-            enabled = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.TRANSLUCENT_QS, 1) == 1;
-            qsTransparency = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.QS_TRANSPARENCY, 50);
-            qsTileStyle = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.QS_TILE_STYLE, 1);
+            updatePreferences();
+
             contentObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
                 @Override
                 public void onChange(boolean selfChange, Uri uri) {
-                    enabled = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.TRANSLUCENT_QS, 1) == 1;
-                    qsTransparency = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.QS_TRANSPARENCY, 50);
-                    qsTileStyle = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.QS_TILE_STYLE, 1);
-                    XposedBridge.log(TAG + ": updated: enabled=" + enabled + ", transparency=" + qsTransparency + ", style=" + qsTileStyle);
+                    updatePreferences();
+                    XposedBridge.log(TAG + ": updated: enabled=" + enabled + ", transparency=" + qsTransparency
+                            + ", style=" + qsTileStyle + ", darkening=" + qsScrimDarkening);
                 }
             };
             contentResolver.registerContentObserver(
-                    Settings.Secure.getUriFor(PersonalizationPolicy.TRANSLUCENT_QS),
-                    false, contentObserver);
+                    Settings.Secure.getUriFor(PersonalizationPolicy.TRANSLUCENT_QS), false, contentObserver);
             contentResolver.registerContentObserver(
-                    Settings.Secure.getUriFor(PersonalizationPolicy.QS_TRANSPARENCY),
-                    false, contentObserver);
+                    Settings.Secure.getUriFor(PersonalizationPolicy.QS_TRANSPARENCY), false, contentObserver);
             contentResolver.registerContentObserver(
-                    Settings.Secure.getUriFor(PersonalizationPolicy.QS_TILE_STYLE),
-                    false, contentObserver);
+                    Settings.Secure.getUriFor(PersonalizationPolicy.QS_TILE_STYLE), false, contentObserver);
+            contentResolver.registerContentObserver(
+                    Settings.Secure.getUriFor(PersonalizationPolicy.QS_SCRIM_DARKENING), false, contentObserver);
+            contentResolver.registerContentObserver(
+                    Settings.Secure.getUriFor(PersonalizationPolicy.QS_TEXT_CONTRAST_MODE), false, contentObserver);
             XposedBridge.log(TAG + ": observer registered, initialState=" + enabled);
         } catch (Throwable t) {
             report("failed to init observer", t);
         }
+    }
+
+    private static void updatePreferences() {
+        if (contentResolver == null) return;
+        try {
+            enabled = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.TRANSLUCENT_QS, 1) == 1;
+            qsTransparency = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.QS_TRANSPARENCY, 50);
+            qsTileStyle = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.QS_TILE_STYLE, 1);
+            qsScrimDarkening = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.QS_SCRIM_DARKENING, 65);
+            qsTextContrastMode = Settings.Secure.getInt(contentResolver, PersonalizationPolicy.QS_TEXT_CONTRAST_MODE, 0);
+        } catch (Throwable t) {
+            report("updatePreferences", t);
+        }
+    }
+
+    private static int getDynamicScrimColor() {
+        int alpha = Math.max(25, Math.min(242, (int) (qsScrimDarkening * 2.55f)));
+        return (alpha << 24) | 0x000000;
     }
 
     private static void hookShadeColors(ClassLoader loader) {
@@ -131,7 +152,7 @@ final class TranslucentQsHook {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
                         if (enabled) {
-                            param.setResult(COLOR_FROSTED_SCRIM);
+                            param.setResult(getDynamicScrimColor());
                         }
                     }
                 });
@@ -140,7 +161,8 @@ final class TranslucentQsHook {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
                         if (enabled) {
-                            param.setResult(COLOR_FROSTED_PANEL);
+                            int panelAlpha = Math.max(30, (int) ((100 - qsTransparency) * 1.8f));
+                            param.setResult((panelAlpha << 24) | 0x141416);
                         }
                     }
                 });
@@ -149,7 +171,7 @@ final class TranslucentQsHook {
                     @Override
                     protected void afterHookedMethod(MethodHookParam param) {
                         if (enabled) {
-                            param.setResult(COLOR_FROSTED_SCRIM);
+                            param.setResult(getDynamicScrimColor());
                         }
                     }
                 });
@@ -193,43 +215,72 @@ final class TranslucentQsHook {
                             int state = ((Integer) param.args[0]).intValue();
                             Object colors = param.getResult();
 
-                            int activeColorInt;
-                            int inactiveColorInt;
-                            int unavailColorInt;
+                            int activeBg;
+                            int inactiveBg;
+                            int unavailBg;
+                            int activeLabel = COLOR_TEXT_DARK;
+                            int activeIcon = COLOR_TEXT_DARK;
+                            int activeSecondary = COLOR_TEXT_SUBTLE;
 
-                            int alphaInactive = Math.max(15, Math.min(180, (int) (qsTransparency * 1.5f)));
+                            int alphaInactive = Math.max(30, Math.min(180, (int) (qsTransparency * 1.5f)));
 
                             switch (qsTileStyle) {
-                                case 2: // Liquid Glass
-                                    inactiveColorInt = (alphaInactive << 24) | 0x00CAE8;
-                                    activeColorInt = 0xDE00D8FF;
-                                    unavailColorInt = (Math.max(10, alphaInactive / 2) << 24) | 0x00CAE8;
+                                case 2: // Liquid Glass (Cyan tint & glow)
+                                    inactiveBg = (alphaInactive << 24) | 0x00CAE8;
+                                    activeBg = 0xFF00E5FF;
+                                    unavailBg = (Math.max(15, alphaInactive / 2) << 24) | 0x00CAE8;
+                                    activeLabel = 0xFF051820;
+                                    activeIcon = 0xFF051820;
+                                    activeSecondary = 0xFF1A3844;
                                     break;
                                 case 3: // Nothing Red Dot Accent
-                                    inactiveColorInt = (alphaInactive << 24) | 0x00FFFFFF;
-                                    activeColorInt = 0xFFD71921;
-                                    unavailColorInt = (Math.max(10, alphaInactive / 2) << 24) | 0x00FFFFFF;
+                                    inactiveBg = (alphaInactive << 24) | 0x222224;
+                                    activeBg = 0xFFD71921;
+                                    unavailBg = (Math.max(15, alphaInactive / 2) << 24) | 0x222224;
+                                    activeLabel = COLOR_TEXT_LIGHT;
+                                    activeIcon = COLOR_TEXT_LIGHT;
+                                    activeSecondary = 0xCCFFFFFF;
                                     break;
-                                default: // Frosted Glass
-                                    inactiveColorInt = (alphaInactive << 24) | 0x00FFFFFF;
-                                    activeColorInt = 0xEEFFFFFF;
-                                    unavailColorInt = (Math.max(10, alphaInactive / 2) << 24) | 0x00FFFFFF;
+                                case 4: // Obsidian High-Contrast Dark
+                                    inactiveBg = (Math.max(40, alphaInactive) << 24) | 0x242428;
+                                    activeBg = 0xFFFFFFFF;
+                                    unavailBg = (Math.max(15, alphaInactive / 2) << 24) | 0x1E1E22;
+                                    activeLabel = COLOR_TEXT_DARK;
+                                    activeIcon = COLOR_TEXT_DARK;
+                                    activeSecondary = COLOR_TEXT_SUBTLE;
+                                    break;
+                                default: // Frosted Glass (Default)
+                                    inactiveBg = (alphaInactive << 24) | 0xFFFFFF;
+                                    activeBg = COLOR_FROSTED_ACTIVE_WHITE;
+                                    unavailBg = (Math.max(15, alphaInactive / 2) << 24) | 0xFFFFFF;
+                                    activeLabel = COLOR_TEXT_DARK;
+                                    activeIcon = COLOR_TEXT_DARK;
+                                    activeSecondary = COLOR_TEXT_SUBTLE;
                                     break;
                             }
 
-                            if (state == 1) { // Inactive
-                                XposedHelpers.setLongField(colors, "background", ColorKt.Color(inactiveColorInt));
-                            } else if (state == 2) { // Active
-                                XposedHelpers.setLongField(colors, "background", ColorKt.Color(activeColorInt));
+                            if (state == 2) { // Active
+                                XposedHelpers.setLongField(colors, "background", ColorKt.Color(activeBg));
+                                XposedHelpers.setLongField(colors, "labelColor", ColorKt.Color(activeLabel));
+                                XposedHelpers.setLongField(colors, "iconColor", ColorKt.Color(activeIcon));
+                                XposedHelpers.setLongField(colors, "secondaryLabelColor", ColorKt.Color(activeSecondary));
+                            } else if (state == 1) { // Inactive
+                                XposedHelpers.setLongField(colors, "background", ColorKt.Color(inactiveBg));
+                                XposedHelpers.setLongField(colors, "labelColor", ColorKt.Color(COLOR_TEXT_LIGHT));
+                                XposedHelpers.setLongField(colors, "iconColor", ColorKt.Color(COLOR_TEXT_LIGHT));
+                                XposedHelpers.setLongField(colors, "secondaryLabelColor", ColorKt.Color(COLOR_TEXT_MUTED));
                             } else if (state == 0) { // Unavailable
-                                XposedHelpers.setLongField(colors, "background", ColorKt.Color(unavailColorInt));
+                                XposedHelpers.setLongField(colors, "background", ColorKt.Color(unavailBg));
+                                XposedHelpers.setLongField(colors, "labelColor", ColorKt.Color(0x77FFFFFF));
+                                XposedHelpers.setLongField(colors, "iconColor", ColorKt.Color(0x77FFFFFF));
+                                XposedHelpers.setLongField(colors, "secondaryLabelColor", ColorKt.Color(0x4DFFFFFF));
                             }
                         } catch (Throwable t) {
                             report("resolveTileContentColors override", t);
                         }
                     }
                 });
-                XposedBridge.log(TAG + ": TileContentColorsKt hooked");
+                XposedBridge.log(TAG + ": TileContentColorsKt high contrast typography hooked");
             }
         } catch (Throwable t) {
             report("tile content colors hook", t);
@@ -262,13 +313,14 @@ final class TranslucentQsHook {
                         Object scrimBehind = XposedHelpers.getObjectField(param.thisObject, "mScrimBehind");
                         Object notifScrim = XposedHelpers.getObjectField(param.thisObject, "mNotificationsScrim");
                         if (param.args[0] == scrimBehind || param.args[0] == notifScrim) {
+                            float maxAllowedAlpha = Math.max(0.40f, qsScrimDarkening / 100.0f);
                             if (param.args[1] instanceof Float) {
                                 float alpha = (Float) param.args[1];
-                                if (alpha > 0.25f) {
-                                    param.args[1] = 0.25f;
+                                if (alpha > maxAllowedAlpha) {
+                                    param.args[1] = maxAllowedAlpha;
                                 }
                             }
-                            param.args[2] = COLOR_FROSTED_SCRIM;
+                            param.args[2] = getDynamicScrimColor();
                         }
                     } catch (Throwable t) {
                         report("updateScrimColor override", t);
@@ -281,20 +333,21 @@ final class TranslucentQsHook {
                 protected void afterHookedMethod(MethodHookParam param) {
                     if (!enabled) return;
                     try {
+                        float targetAlpha = Math.max(0.40f, qsScrimDarkening / 100.0f);
                         float behindAlpha = XposedHelpers.getFloatField(param.thisObject, "mBehindAlpha");
-                        if (behindAlpha > 0.25f) {
-                            XposedHelpers.setFloatField(param.thisObject, "mBehindAlpha", 0.25f);
+                        if (behindAlpha > targetAlpha) {
+                            XposedHelpers.setFloatField(param.thisObject, "mBehindAlpha", targetAlpha);
                         }
                         float notifAlpha = XposedHelpers.getFloatField(param.thisObject, "mNotificationsAlpha");
-                        if (notifAlpha > 0.25f) {
-                            XposedHelpers.setFloatField(param.thisObject, "mNotificationsAlpha", 0.25f);
+                        if (notifAlpha > targetAlpha) {
+                            XposedHelpers.setFloatField(param.thisObject, "mNotificationsAlpha", targetAlpha);
                         }
                     } catch (Throwable t) {
                         report("applyState override", t);
                     }
                 }
             });
-            XposedBridge.log(TAG + ": ScrimController hooked");
+            XposedBridge.log(TAG + ": ScrimController hooked with dynamic smoked scrim");
         } catch (Throwable t) {
             report("scrim controller hook", t);
         }
@@ -381,6 +434,11 @@ final class TranslucentQsHook {
             idQsTileMedUnavailBg = res.getIdentifier("qs_tile_medium_unavailable_background_color", "color", "com.android.systemui");
             idQsTileLargeUnavailBg = res.getIdentifier("qs_tile_large_unavailable_background_color", "color", "com.android.systemui");
             idQsTileOffBg = res.getIdentifier("qs_tile_off_background_color", "color", "com.android.systemui");
+            idQsTileLabelActive = res.getIdentifier("qs_tile_label_active_color", "color", "com.android.systemui");
+            idQsTileLabelInactive = res.getIdentifier("qs_tile_label_inactive_color", "color", "com.android.systemui");
+            idQsTileIconActive = res.getIdentifier("qs_tile_icon_active_color", "color", "com.android.systemui");
+            idQsTileIconInactive = res.getIdentifier("qs_tile_icon_inactive_color", "color", "com.android.systemui");
+            idQsTileSecondaryLabelInactive = res.getIdentifier("qs_tile_secondary_label_inactive_color", "color", "com.android.systemui");
             idNtScrimBehind1 = res.getIdentifier("nt_scrim_behind_1", "color", "com.android.systemui");
             idNtScrimBehind2 = res.getIdentifier("nt_scrim_behind_2", "color", "com.android.systemui");
             idNtScrimBehindColor = res.getIdentifier("nt_scrim_behind_color", "color", "com.android.systemui");
@@ -392,17 +450,24 @@ final class TranslucentQsHook {
 
     private static int getTranslucentColorForId(int id) {
         if (id <= 0) return 0;
+        int scrim = getDynamicScrimColor();
+        int alphaInactive = Math.max(30, Math.min(180, (int) (qsTransparency * 1.5f)));
+
         if (id == idQsTileInactiveBg) {
-            return COLOR_FROSTED_INACTIVE;
+            return (alphaInactive << 24) | 0xFFFFFF;
+        } else if (id == idQsTileActiveBg) {
+            return COLOR_FROSTED_ACTIVE_WHITE;
+        } else if (id == idQsTileLabelActive || id == idQsTileIconActive) {
+            return COLOR_TEXT_DARK;
+        } else if (id == idQsTileLabelInactive || id == idQsTileIconInactive) {
+            return COLOR_TEXT_LIGHT;
+        } else if (id == idQsTileSecondaryLabelInactive) {
+            return COLOR_TEXT_MUTED;
         } else if (id == idQsTileDisableBg || id == idQsTileUnavailBg
                 || id == idQsTileMedUnavailBg || id == idQsTileLargeUnavailBg || id == idQsTileOffBg) {
-            return COLOR_FROSTED_UNAVAILABLE;
-        } else if (id == idQsTileActiveBg) {
-            return COLOR_FROSTED_ACTIVE;
-        } else if (id == idNtScrimBehind1 || id == idNtScrimBehind2 || id == idNtScrimBehindColor) {
-            return COLOR_FROSTED_SCRIM;
-        } else if (id == idNotifScrimBg) {
-            return COLOR_FROSTED_SCRIM;
+            return (Math.max(15, alphaInactive / 2) << 24) | 0xFFFFFF;
+        } else if (id == idNtScrimBehind1 || id == idNtScrimBehind2 || id == idNtScrimBehindColor || id == idNotifScrimBg) {
+            return scrim;
         }
         return 0;
     }
